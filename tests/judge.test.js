@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRequests, buildDetailRequest, scoreResults, candidateId, mockAnswers } from '../src/judge.js';
+import {
+  buildRequests,
+  buildDetailRequest,
+  scoreResults,
+  candidateId,
+  mockAnswers,
+  buildStoryScoreRequest,
+  summarizeStoryScore,
+} from '../src/judge.js';
+import { EMOJIS, pickEmoji } from '../src/rules.js';
 import {
   normalizeWeights,
   weightFractions,
@@ -202,7 +211,7 @@ test('normalizeWeights clamps and falls back to defaults when everything is zero
 });
 
 test('cleanText strips control characters, collapses whitespace and truncates', () => {
-  assert.equal(cleanText('  hello   world\n\nagain  ', 100), 'hello world again');
+  assert.equal(cleanText('  hello \x07  world\n\nagain  ', 100), 'hello world again');
   assert.equal(cleanText('abcdef', 3), 'abc');
   assert.equal(cleanText(42, 10), '');
 });
@@ -225,4 +234,53 @@ test('mockAnswers returns well-formed answers for every question and flags mock 
   const scored = scoreResults({ answers, candidates: dirty, weights: normalizeWeights({}), storyLength: 0, length: 'medium', filters: RATINGS.T.filters });
   assert.ok(scored.winner);
   assert.equal(scored.ranked.find((r) => r.id === 'D').filtered, true);
+});
+
+test('pickEmoji accepts only listed icons and falls back by join order', () => {
+  assert.equal(EMOJIS.length, 32);
+  assert.equal(new Set(EMOJIS).size, 32, 'no duplicates');
+  assert.equal(pickEmoji(EMOJIS[5]), EMOJIS[5]);
+  assert.equal(pickEmoji('<img src=x>'), null);
+  assert.equal(pickEmoji({ toString: () => EMOJIS[0] }), null, 'objects are not coerced');
+  assert.equal(pickEmoji('nope', 3), EMOJIS[3]);
+  assert.equal(pickEmoji(undefined, 35), EMOJIS[3], 'wraps around');
+});
+
+test('the story score asks one Score question per dimension over the whole story', () => {
+  const req = buildStoryScoreRequest({ theme: 'Geese', sentences: ['A goose appeared.', 'It left. The end.'] });
+  assert.match(req.state.story, /^1\. A goose appeared\.\n2\. It left\. The end\.$/);
+  assert.equal(Object.keys(req.questions).length, DIMENSIONS.length);
+  for (const d of DIMENSIONS) {
+    const q = req.questions[`story_${d.key}`];
+    assert.equal(q.type, 'score');
+    assert.equal(q.criteria.length, 5);
+  }
+});
+
+test('the story score mixes the four dimensions with the story weights, and refuses partial answers', () => {
+  const full = {
+    story_funny: { score: 4 },
+    story_continuity: { score: 2 },
+    story_theme: { score: 3 },
+    story_surprise: { score: 0 },
+  };
+  const s = summarizeStoryScore(full, { funny: 50, continuity: 50, theme: 0, surprise: 0 });
+  assert.equal(s.overall, 75, 'half of 100% funny plus half of 50% flow');
+  assert.equal(s.dims.funny.value, 1);
+  assert.equal(s.dims.funny.label, 'Hilarious');
+  assert.equal(s.dims.surprise.label, 'Predictable');
+  assert.equal(s.dims.continuity.label, 'Mostly coherent');
+  const fractional = summarizeStoryScore({ ...full, story_funny: { score: 2.6 } }, { funny: 100, continuity: 0, theme: 0, surprise: 0 });
+  assert.equal(fractional.overall, 65);
+  assert.equal(fractional.dims.funny.label, 'Very funny', 'label follows the nearest level');
+  const { story_theme: _dropped, ...partial } = full;
+  assert.equal(summarizeStoryScore(partial, {}), null);
+  assert.equal(summarizeStoryScore({ ...full, story_theme: { score: 'x' } }, {}), null);
+});
+
+test('the mock judge answers story score questions', () => {
+  const req = buildStoryScoreRequest({ theme: 'T', sentences: ['One.'] });
+  const res = mockAnswers(req);
+  const s = summarizeStoryScore(res.answers, {});
+  assert.ok(s && s.overall >= 0 && s.overall <= 100);
 });

@@ -1,13 +1,12 @@
 // Service worker: caches the app shell so the PWA installs and opens fast.
 // Game traffic (/ws/*, /api/*) never goes through the cache.
-const VERSION = 'jev-stories-v1';
+const VERSION = 'jev-stories-v2';
 const SHELL = [
   '/',
   '/index.html',
   '/app.js',
   '/styles.css',
   '/manifest.webmanifest',
-  '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/apple-touch-icon.png',

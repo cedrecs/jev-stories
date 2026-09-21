@@ -8,7 +8,8 @@ Live: https://jev-stories.jev-stories.workers.dev
 
 ## How a game plays
 
-1. Pick a nickname and one of four rooms. No accounts, no room codes.
+1. Pick an emoji icon, a nickname and one of four rooms. No accounts, no
+   room codes. The icon can be changed any time from the Scores panel.
 2. A room runs whenever two or more people are in it. There is no host.
 3. Players take turns as **theme setter**. The setter writes a theme, picks a
    story length (Short 4 to 7 lines, Medium 7 to 12, Long 12 to 18) and can
@@ -28,8 +29,9 @@ Live: https://jev-stories.jev-stories.workers.dev
    how often players agreed with Jev. The setter can skip ahead.
 7. Jev also judges whether the story feels finished. Once past its minimum
    length, a winning line that reads like an ending closes the story; the
-   maximum length is a hard stop. The finished story is shown for 30 seconds
-   with Copy, Download and Share.
+   maximum length is a hard stop. Jev then scores the finished story out of
+   100 on the same four qualities it uses for lines, and the story is shown
+   for 30 seconds with Copy, Download and Share.
 8. Scores last while you stay. Leaving wipes them; a refresh or a brief drop
    keeps the seat for 60 seconds.
 
@@ -59,6 +61,10 @@ in parallel:
   minimum story length the closure probability is blended into the share
   (up to half the weight at the maximum) and decides whether the story ends.
 
+When a story ends, one more request rates the whole story with four Score
+questions, one per quality, each on five described levels. The story's slider
+weights combine them into Jev's score out of 100.
+
 Candidates are shuffled and labelled A, B, C before judging; Jev never sees
 player names. With 100 players a round is 6 requests and Jev answers in well
 under a second. See `src/judge.js` and `src/rules.js`; the math is unit
@@ -72,6 +78,7 @@ src/room.js          Durable Object: players, phases, timers (alarms), sockets
 src/judge.js         TypeSafe request builder, scoring, transport, mock
 src/rules.js         Rooms, dimensions, filters, learning rule, validation
 public/              PWA: index.html, app.js, styles.css, sw.js, manifest, icons
+assets/              logo-source.png, the master logo every icon is built from
 scripts/             make-icons.mjs (icons), load-test.mjs (synthetic players)
 tests/               node --test suites
 ```

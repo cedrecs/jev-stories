@@ -22,6 +22,14 @@
     { code: 'A', label: 'Adult', slug: 'adult', tagline: 'Anything goes, except hate and harassment', filters: [], players: 0 },
   ];
 
+  // Player icons: same list and order as the server (src/rules.js).
+  const EMOJIS = [
+    0x1f98a, 0x1f438, 0x1f419, 0x1f989, 0x1f422, 0x1f984, 0x1f41d, 0x1f427,
+    0x1f996, 0x1f433, 0x1f98b, 0x1f43c, 0x1f42f, 0x1f981, 0x1f428, 0x1f430,
+    0x1f43b, 0x1f435, 0x1f99c, 0x1f9a9, 0x1f40c, 0x1f344, 0x1f335, 0x1f680,
+    0x1f431, 0x1f436, 0x1f980, 0x1f986, 0x1f994, 0x1f47b, 0x1f916, 0x1f47d,
+  ].map((c) => String.fromCodePoint(c));
+
   const $ = (sel, root = document) => root.querySelector(sel);
   const screenEl = $('#screen');
   const topbar = $('#topbar');
@@ -33,6 +41,7 @@
   const esc = (v) =>
     String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const pct = (x) => `${Math.round((Number(x) || 0) * 100)}%`;
+  const av = (e) => (e ? `<span class="av" aria-hidden="true">${esc(e)}</span>` : '');
 
   // ---------------------------------------------------------------- storage
   // Session storage keeps tabs independent; local storage survives a closed tab.
@@ -92,6 +101,8 @@
     screen: 'home',
     rooms: ROOMS,
     homeError: '',
+    emoji: null,
+    emojiTimer: null,
     busy: false,
     code: null,
     nick: '',
@@ -153,7 +164,7 @@
     }
     app.ws = ws;
     ws.addEventListener('open', () => {
-      ws.send(JSON.stringify({ type: 'join', nick: app.nick, token: app.token }));
+      ws.send(JSON.stringify({ type: 'join', nick: app.nick, token: app.token, emoji: app.emoji }));
     });
     ws.addEventListener('message', (ev) => {
       if (typeof ev.data !== 'string' || ev.data[0] !== '{') return;
@@ -393,15 +404,9 @@
     const savedNick = store.get('jev:nick') || '';
     screenEl.innerHTML = `
       <section class="hero">
-        <img class="logo" src="/icons/icon.svg" alt="" width="96" height="96">
+        <img class="logo" src="/icons/icon-512.png" alt="Jev Stories" width="128" height="128">
         <h1>Jev Stories</h1>
         <p class="tagline">Everyone writes the next line. Jev picks the winner.</p>
-      </section>
-      <section class="card stack">
-        <label><span class="lbl">Your nickname</span><input id="nick" maxlength="20" autocomplete="nickname" placeholder="e.g. Captain Goose" value="${esc(savedNick)}"></label>
-        <div class="label" style="margin-top:6px">Pick a room</div>
-        <div id="room-cards" class="room-list">${roomCardsHtml()}</div>
-        <p class="error" id="home-error">${esc(app.homeError)}</p>
       </section>
       <section class="how">
         <h2>How it plays</h2>
@@ -410,9 +415,28 @@
           <li><b>Everyone writes the next line.</b> One sentence each, against the clock.</li>
           <li><b>Jev picks.</b> TypeSafe's Jev reads every line and the funniest one joins the story. One point to its author.</li>
           <li><b>Tap your favorite.</b> Taps never change the pick, but they teach Jev what the room enjoys.</li>
-          <li><b>Jev also decides when the story is done.</b> Then the next player sets a theme, for as long as two of you are here.</li>
+          <li><b>Jev also decides when the story is done, and scores it.</b> Then the next player sets a theme, for as long as two of you are here.</li>
         </ol>
+      </section>
+      <section class="card stack">
+        <label for="nick"><span class="lbl">Your icon and nickname</span></label>
+        <div class="nick-row">
+          ${emojiPickerHtml('emoji-home')}
+          <input id="nick" maxlength="20" autocomplete="nickname" placeholder="e.g. Captain Goose" value="${esc(savedNick)}">
+        </div>
+        <p class="hint">Tap the icon or the arrows to change it, so friends can tell players apart.</p>
+        <div class="label" style="margin-top:12px">Pick a room</div>
+        <div id="room-cards" class="room-list">${roomCardsHtml()}</div>
+        <p class="error" id="home-error">${esc(app.homeError)}</p>
       </section>`;
+  }
+
+  function emojiPickerHtml(id) {
+    return `<div class="emoji-pick" role="group" aria-label="Your icon">
+      <button type="button" class="emoji-nav" data-action="emoji-prev" aria-label="Previous icon">&lsaquo;</button>
+      <button type="button" class="emoji-cur" id="${id}" data-action="emoji-next" data-emoji-current aria-label="Your icon. Tap for the next one.">${esc(app.emoji)}</button>
+      <button type="button" class="emoji-nav" data-action="emoji-next" aria-label="Next icon">&rsaquo;</button>
+    </div>`;
   }
 
   // ----------------------------------------------------------- fragments
@@ -420,7 +444,7 @@
     return `<ul class="players">${s.players
       .map(
         (p) =>
-          `<li><span class="dot ${p.connected ? '' : 'off'}"></span>${esc(p.nick)}${p.id === s.youId ? '<span class="badge you">you</span>' : ''}</li>`,
+          `<li><span class="dot ${p.connected ? '' : 'off'}"></span>${av(p.emoji)}${esc(p.nick)}${p.id === s.youId ? '<span class="badge you">you</span>' : ''}</li>`,
       )
       .join('')}</ul>`;
   }
@@ -452,9 +476,9 @@
     return `<ol class="story">${story.sentences
       .map(
         (x, i) =>
-          `<li data-n="${i + 1}" class="${highlightLast && i === story.sentences.length - 1 ? 'new' : ''}">${esc(x.text)}<span class="by">${esc(
-            x.authorNick,
-          )}</span></li>`,
+          `<li data-n="${i + 1}" class="${highlightLast && i === story.sentences.length - 1 ? 'new' : ''}">${esc(x.text)}<span class="by">${av(
+            x.authorEmoji,
+          )}${esc(x.authorNick)}</span></li>`,
       )
       .join('')}</ol>`;
   }
@@ -474,7 +498,7 @@
     return `<section class="card"><h3>Scores</h3><ol class="scores">${sorted
       .map(
         (p) =>
-          `<li><span class="dot ${p.connected ? '' : 'off'}"></span>${esc(p.nick)}${p.id === s.youId ? '<span class="badge you">you</span>' : ''}<span class="pts">${p.score}</span></li>`,
+          `<li><span class="dot ${p.connected ? '' : 'off'}"></span>${av(p.emoji)}${esc(p.nick)}${p.id === s.youId ? '<span class="badge you">you</span>' : ''}<span class="pts">${p.score}</span></li>`,
       )
       .join('')}</ol>${s.players.length > 10 ? `<p class="hint">and ${s.players.length - 10} more, see Scores in the top bar</p>` : ''}</section>`;
   }
@@ -516,11 +540,10 @@
     return `
       <section class="card center">
         <h2>Waiting for players</h2>
-        <p class="muted">The game starts as soon as two people are in the ${esc(room.label || '')} room.</p>
+        <p class="muted">The game starts as soon as two or more people are in the room.</p>
         <button class="btn primary" data-action="copy-link">Copy invite link</button>
         <div style="margin-top:16px" data-players>${playersHtml(s)}</div>
       </section>
-      ${s.lastStory ? '' : ''}
       ${scoreboardCardHtml(s)}`;
   }
 
@@ -550,7 +573,7 @@
     return `
       <section class="card center">
         <div class="label">Story #${st.index}</div>
-        <h2>${esc(st.setterNick)} is choosing a theme</h2>
+        <h2>${av(st.setterEmoji)}${esc(st.setterNick)} is choosing a theme</h2>
         <div class="timer" style="text-align:center" data-deadline="${s.deadline}"></div>
         <p class="muted">Get your typing fingers ready.</p>
       </section>
@@ -625,7 +648,7 @@
     }">
       <div class="rank">${label}${own ? ' · yours' : ''}<span class="mypick" data-mypick ${tapped ? '' : 'hidden'}> · your pick</span></div>
       <p class="text">${esc(row.text)}</p>
-      <div class="meta"><span class="author">by ${esc(row.authorNick)}</span><span class="share">${pct(row.share)}</span></div>
+      <div class="meta"><span class="author">by ${av(row.authorEmoji)}${esc(row.authorNick)}</span><span class="share">${pct(row.share)}</span></div>
       ${dimsHtml(row)}
       ${tapBadgeHtml(counts[rank] || 0, favorite)}
     </article>`;
@@ -659,7 +682,12 @@
         ${
           others.length
             ? `<details style="margin-top:10px"><summary class="muted">Everyone else (${res.othersTotal || others.length})</summary><div class="podium" style="margin-top:8px">${others
-                .map((r) => `<article class="result"><p class="text">${esc(r.text)}</p><div class="meta"><span>by ${esc(r.authorNick)}</span><span class="share">${pct(r.share)}</span></div></article>`)
+                .map(
+                  (r) =>
+                    `<article class="result"><p class="text">${esc(r.text)}</p><div class="meta"><span>by ${av(r.authorEmoji)}${esc(r.authorNick)}</span><span class="share">${pct(
+                      r.share,
+                    )}</span></div></article>`,
+                )
                 .join('')}${
                 (res.othersTotal || 0) > others.length ? `<p class="hint">and ${res.othersTotal - others.length} more lines below these</p>` : ''
               }</div></details>`
@@ -679,8 +707,27 @@
 
   function storyText(st) {
     const len = LENGTHS[st.length] || LENGTHS.medium;
-    const lines = st.sentences.map((x, i) => `${i + 1}. ${x.text}  (${x.authorNick})`);
-    return `${st.theme}\nA Jev Stories tale, ${len.label.toLowerCase()} length, theme by ${st.setterNick}\n\n${lines.join('\n')}\n\n${st.endText || ''}\n`;
+    const who = (emoji, nick) => `${emoji ? `${emoji} ` : ''}${nick}`;
+    const lines = st.sentences.map((x, i) => `${i + 1}. ${x.text}  (${who(x.authorEmoji, x.authorNick)})`);
+    const js = st.jevScore;
+    const score =
+      js && js.dims ? `Jev's score: ${js.overall}/100 (${DIMS.map((d) => `${d.label} ${pct(js.dims[d.key].value)}`).join(', ')})\n` : '';
+    return `${st.theme}\nA Jev Stories tale, ${len.label.toLowerCase()} length, theme by ${who(st.setterEmoji, st.setterNick)}\n\n${lines.join(
+      '\n',
+    )}\n\n${st.endText || ''}\n${score}`;
+  }
+
+  // Jev's score for a finished story: an overall mark plus the four qualities.
+  function verdictHtml(js) {
+    if (!js || js.pending) return '<div class="verdict pending"><div class="spinner small"></div><span class="muted">Jev is scoring the story…</span></div>';
+    if (js.error || !js.dims) return `<p class="muted small">${esc(js.error || 'Jev could not score this story.')}</p>`;
+    return `<div class="verdict">
+      <div class="verdict-head"><span class="label">Jev's score</span><span class="verdict-num"><b>${Number(js.overall) || 0}</b>/100</span></div>
+      <div class="dims story-dims">${DIMS.map((d) => {
+        const v = js.dims[d.key] || { value: 0, label: '' };
+        return `<div class="dim">${d.label}<span class="dim-level">${esc(v.label)}</span><i><b style="width:${Math.round((Number(v.value) || 0) * 100)}%"></b></i></div>`;
+      }).join('')}</div>
+    </div>`;
   }
 
   function buildStoryEnd(s) {
@@ -689,17 +736,20 @@
     const len = LENGTHS[st.length] || LENGTHS.medium;
     return `
       <section class="card story-final">
-        <div class="label">Story #${st.index} · ${len.label} · theme by ${esc(st.setterNick)}</div>
+        <div class="label">Story #${st.index} · ${len.label} · theme by ${av(st.setterEmoji)}${esc(st.setterNick)}</div>
         <h2>${esc(st.theme)}</h2>
-        <ol class="story final">${st.sentences.map((x, i) => `<li data-n="${i + 1}">${esc(x.text)}<span class="by">${esc(x.authorNick)}</span></li>`).join('')}</ol>
+        <ol class="story final">${st.sentences
+          .map((x, i) => `<li data-n="${i + 1}">${esc(x.text)}<span class="by">${av(x.authorEmoji)}${esc(x.authorNick)}</span></li>`)
+          .join('')}</ol>
         <p class="muted" style="margin-top:12px">${esc(st.endText)}</p>
+        ${verdictHtml(st.jevScore)}
         <div class="row">
           <button class="btn small" data-action="copy-story">Copy</button>
           <button class="btn small" data-action="download-story">Download .txt</button>
           ${navigator.share ? '<button class="btn small" data-action="share-story">Share</button>' : ''}
         </div>
         <p class="next">Next story in <span class="timer inline" data-deadline="${s.deadline}"></span>${
-          s.nextSetterNick ? `. ${esc(s.nextSetterNick)} picks the theme.` : ''
+          s.nextSetterNick ? `. ${av(s.nextSetterEmoji)}${esc(s.nextSetterNick)} picks the theme.` : ''
         }</p>
       </section>
       ${scoreboardCardHtml(s)}`;
@@ -765,11 +815,13 @@
     $('#drawer-list').innerHTML = sorted
       .map(
         (p) =>
-          `<li><span class="dot ${p.connected ? '' : 'off'}"></span>${esc(p.nick)}${p.id === setterId ? '<span class="badge jev">theme</span>' : ''}${
-            p.id === s.youId ? '<span class="badge you">you</span>' : ''
-          }<span class="pts">${p.score}</span></li>`,
+          `<li><span class="dot ${p.connected ? '' : 'off'}"></span>${av(p.emoji)}${esc(p.nick)}${
+            p.id === setterId ? '<span class="badge jev">theme</span>' : ''
+          }${p.id === s.youId ? '<span class="badge you">you</span>' : ''}<span class="pts">${p.score}</span></li>`,
       )
       .join('');
+    const meRow = $('#drawer-me');
+    if (meRow) meRow.innerHTML = `<div class="row between"><span class="muted small">Your icon</span>${emojiPickerHtml('emoji-room')}</div>`;
     const fb = s.feedback || { rounds: 0, taps: 0, agreements: 0 };
     const agree = fb.taps ? `${Math.round((fb.agreements / fb.taps) * 100)}%` : 'no taps yet';
     $('#drawer-jev').innerHTML = `
@@ -889,6 +941,20 @@
         app.drawerOpen = !app.drawerOpen;
         renderDrawer(s);
         return;
+      case 'emoji-prev':
+      case 'emoji-next': {
+        const i = Math.max(0, EMOJIS.indexOf(app.emoji));
+        const step = action === 'emoji-next' ? 1 : -1;
+        app.emoji = EMOJIS[(i + step + EMOJIS.length) % EMOJIS.length];
+        store.set('jev:emoji', app.emoji);
+        document.querySelectorAll('[data-emoji-current]').forEach((el) => (el.textContent = app.emoji));
+        if (app.screen === 'room') {
+          // Tapping through several icons sends only the one you stop on.
+          clearTimeout(app.emojiTimer);
+          app.emojiTimer = setTimeout(() => send({ type: 'emoji', emoji: app.emoji }), 400);
+        }
+        return;
+      }
       case 'ask-leave':
         leaveDialog.showModal();
         return;
@@ -991,6 +1057,13 @@
   }
 
   // ------------------------------------------------------------------ boot
+  app.emoji = (() => {
+    const saved = store.get('jev:emoji');
+    if (saved && EMOJIS.includes(saved)) return saved;
+    const pick = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+    store.set('jev:emoji', pick);
+    return pick;
+  })();
   const urlCode = codeFromUrl();
   const cached = urlCode ? loadIdentity(urlCode) : null;
   if (urlCode && cached && cached.token) {

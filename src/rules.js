@@ -3,7 +3,24 @@
 
 // Bump when the snapshot or message protocol changes: clients that see a
 // different version in a snapshot reload themselves to pick up new code.
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
+
+// Player icons. Stored as code points so the source stays plain ASCII; the
+// client carries the same list. A player may pick any of them, repeats allowed.
+const EMOJI_CODES = [
+  0x1f98a, 0x1f438, 0x1f419, 0x1f989, 0x1f422, 0x1f984, 0x1f41d, 0x1f427,
+  0x1f996, 0x1f433, 0x1f98b, 0x1f43c, 0x1f42f, 0x1f981, 0x1f428, 0x1f430,
+  0x1f43b, 0x1f435, 0x1f99c, 0x1f9a9, 0x1f40c, 0x1f344, 0x1f335, 0x1f680,
+  0x1f431, 0x1f436, 0x1f980, 0x1f986, 0x1f994, 0x1f47b, 0x1f916, 0x1f47d,
+];
+export const EMOJIS = EMOJI_CODES.map((c) => String.fromCodePoint(c));
+
+// An emoji from the list, or (when a fallback index is given) a default one.
+export function pickEmoji(input, fallbackIndex = null) {
+  if (typeof input === 'string' && EMOJIS.includes(input)) return input;
+  if (fallbackIndex === null || fallbackIndex === undefined) return null;
+  return EMOJIS[Math.abs(Math.floor(Number(fallbackIndex) || 0)) % EMOJIS.length];
+}
 
 export const LENGTHS = {
   short: { label: 'Short', min: 4, max: 7 },
@@ -13,6 +30,9 @@ export const LENGTHS = {
 
 // Each dimension becomes one Choice question over all candidate sentences.
 // Jev returns a probability per candidate; code mixes them with the weights.
+// When a story ends, the same four dimensions are asked again as Score
+// questions over the whole story (storyInstructions and storyLevels, lowest
+// level first; the text before the colon is the label players see).
 export const DIMENSIONS = [
   {
     key: 'funny',
@@ -20,6 +40,15 @@ export const DIMENSIONS = [
     default: 50,
     instructions:
       'Which candidate is the funniest next sentence for this story? Judge comedic effect for a group of friends playing a party game: wit, absurdity that lands, comic timing, and payoff of setups already present in the story so far. Ignore spelling and grammar unless they ruin the joke.',
+    storyInstructions:
+      'How funny is this finished story as a whole, for a group of friends playing a party game? Judge wit, absurdity that lands, comic timing and payoffs. Ignore spelling and grammar unless they ruin the joke.',
+    storyLevels: [
+      'Not funny: no joke lands; the story reads flat or confusing',
+      'Slightly funny: one or two mildly amusing moments',
+      'Funny: several lines land and it raises a smile throughout',
+      'Very funny: most lines land and the jokes build on each other',
+      'Hilarious: laugh-out-loud from start to finish with a great payoff',
+    ],
   },
   {
     key: 'continuity',
@@ -27,6 +56,15 @@ export const DIMENSIONS = [
     default: 20,
     instructions:
       'Which candidate best continues the story so far? It should follow naturally from the previous sentence, keep characters, places and facts consistent, and move the story forward rather than restarting it. If the story has no sentences yet, prefer the strongest opening line for the theme.',
+    storyInstructions:
+      'How well does this finished story hold together from its first line to its last? Judge whether each sentence follows from the one before, whether characters, places and facts stay consistent, and whether it builds to an ending.',
+    storyLevels: [
+      'Incoherent: lines contradict each other or ignore what came before',
+      'Choppy: some lines follow on, others jump around or restart',
+      'Mostly coherent: it follows one thread with a few jumps',
+      'Coherent: each line builds on the last and the ending fits',
+      'Seamless: it reads like one author wrote it, with a satisfying arc',
+    ],
   },
   {
     key: 'theme',
@@ -34,6 +72,14 @@ export const DIMENSIONS = [
     default: 15,
     instructions:
       'Which candidate fits the theme of the story best? Prefer sentences that clearly belong to the theme in setting, subject matter or tone, rather than generic sentences that could belong to any story.',
+    storyInstructions: 'How well does this finished story fit its theme, in setting, subject matter and tone?',
+    storyLevels: [
+      'Off theme: the story ignores the theme',
+      'Loosely related: the theme appears only briefly',
+      'Partly on theme: the theme runs through parts of the story',
+      'On theme: the theme is clear throughout',
+      'Built on the theme: the theme drives the whole story and its punchline',
+    ],
   },
   {
     key: 'surprise',
@@ -41,6 +87,15 @@ export const DIMENSIONS = [
     default: 15,
     instructions:
       'Which candidate is the most surprising, absurd or unexpected while still making sense as a sentence in this story? Prefer twists, escalation and wild imagery over predictable continuations.',
+    storyInstructions:
+      'How surprising and inventive is this finished story, while still making sense? Judge twists, escalation and wild imagery against predictable turns.',
+    storyLevels: [
+      'Predictable: nothing unexpected happens',
+      'A little surprising: one small twist or odd detail',
+      'Surprising: several unexpected turns',
+      'Very surprising: inventive turns throughout',
+      'Wildly inventive: twist after twist that still makes sense',
+    ],
   },
 ];
 
@@ -322,6 +377,6 @@ export function chunk(arr, size) {
 export function cleanText(text, maxLen) {
   if (typeof text !== 'string') return '';
   // eslint-disable-next-line no-control-regex
-  const stripped = text.replace(/[ --]/g, '');
+  const stripped = text.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
   return stripped.replace(/\s+/g, ' ').trim().slice(0, maxLen);
 }

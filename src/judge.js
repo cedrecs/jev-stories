@@ -148,6 +148,44 @@ export function scoreResults({ answers, candidates, weights, storyLength, length
 }
 
 // ---------------------------------------------------------------------------
+// Story score: when a story ends, Jev rates the whole story on the same four
+// dimensions with Score questions; the story's slider weights combine them.
+
+export function buildStoryScoreRequest({ theme, sentences }) {
+  const state = {
+    game: 'A party game: players took turns adding one sentence each to a shared comic story. The finished story is below.',
+    theme,
+    story: sentences.map((t, i) => `${i + 1}. ${t}`).join('\n'),
+  };
+  const questions = {};
+  for (const d of DIMENSIONS) {
+    questions[`story_${d.key}`] = { type: 'score', instructions: d.storyInstructions, criteria: d.storyLevels };
+  }
+  return { state, model: MODEL, questions };
+}
+
+const shortLabel = (level) => String(level || '').split(':')[0].trim();
+
+// Returns { overall 0..100, dims: { key: { value 0..1, label } } }, or null
+// when any dimension is missing, so a partial answer never shows as a score.
+export function summarizeStoryScore(answers, weights) {
+  const fractions = weightFractions(weights);
+  const dims = {};
+  let overall = 0;
+  for (const d of DIMENSIONS) {
+    const a = answers && answers[`story_${d.key}`];
+    const raw = a ? Number(a.score) : NaN;
+    if (!Number.isFinite(raw)) return null;
+    const max = d.storyLevels.length - 1;
+    const clamped = Math.max(0, Math.min(max, raw));
+    const value = clamped / max;
+    dims[d.key] = { value, label: shortLabel(d.storyLevels[Math.round(clamped)]) };
+    overall += fractions[d.key] * value;
+  }
+  return { overall: Math.round(overall * 100), dims };
+}
+
+// ---------------------------------------------------------------------------
 // Transport
 
 function sleep(ms) {
@@ -184,7 +222,7 @@ export async function callTypeSafe(apiKey, body, { fetchImpl = fetch, retries = 
 
 // Development stand-in used only when MOCK_JUDGE=1 and no key is configured.
 export function mockAnswers(request) {
-  const ids = request.state.candidates.map((c) => c.id);
+  const ids = (request.state.candidates || []).map((c) => c.id);
   const answers = {};
   const rand = () => Math.random();
   for (const [qid, q] of Object.entries(request.questions)) {
@@ -203,9 +241,30 @@ export function mockAnswers(request) {
       answers[qid] = { type: 'noul', noul: /\bf[u*]ck|\bsh[i*]t\b/.test(text) ? 0.95 : 0.02 };
     } else if (q.type === 'noul') {
       answers[qid] = { type: 'noul', noul: 0.02 };
+    } else if (q.type === 'score') {
+      const max = q.criteria.length - 1;
+      answers[qid] = { type: 'score', score: 1 + rand() * (max - 1), confidence: 0.4, probabilities: {}, legend: {} };
     }
   }
   return { model: 'mock', answers, usage: { input_tokens: 0, output_tokens: 0 } };
+}
+
+// Scores a finished story. Throws when the judge is unavailable or the
+// answer is incomplete; the caller shows a "could not score" note instead.
+export async function scoreStory(env, { theme, sentences, weights }) {
+  const request = buildStoryScoreRequest({ theme, sentences });
+  let response;
+  if (env.TYPESAFE_API_KEY) {
+    response = await callTypeSafe(env.TYPESAFE_API_KEY, request);
+  } else if (env.MOCK_JUDGE === '1') {
+    await sleep(500);
+    response = mockAnswers(request);
+  } else {
+    throw new Error('The judge is not configured: set the TYPESAFE_API_KEY secret.');
+  }
+  const summary = summarizeStoryScore(response.answers || {}, weights);
+  if (!summary) throw new Error('Jev returned an incomplete story score');
+  return summary;
 }
 
 // Entry point used by the room. Returns { ranked, winner, ends, endReason, model, usage, requests }.

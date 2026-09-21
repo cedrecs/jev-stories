@@ -19,8 +19,11 @@ import {
   learnFromTaps,
   nextSetter,
   cleanText,
+  pickEmoji,
 } from './rules.js';
-import { judgeRound, candidateId } from './judge.js';
+import { judgeRound, candidateId, scoreStory } from './judge.js';
+
+const STORY_SCORE_ERROR = 'Jev could not score this story.';
 
 const GRACE_MS = 60_000; // a dropped connection keeps its seat and score this long
 const EMPTY_ROOM_SLEEP_MS = 60 * 60_000; // an hour after everyone is gone, clear the table
@@ -68,6 +71,9 @@ export class Room extends DurableObject {
       r.paused = { phase: 'theme', remainingMs: 0 };
     }
     if (r.results && !r.results.taps) r.results.taps = {};
+    for (const p of Object.values(r.players)) if (!p.emoji) p.emoji = pickEmoji(null, p.order);
+    // A restart while Jev was scoring the last story leaves it pending forever.
+    if (r.lastStory && r.lastStory.jevScore && r.lastStory.jevScore.pending) r.lastStory.jevScore = { error: STORY_SCORE_ERROR };
   }
 
   rating() {
@@ -254,6 +260,17 @@ export class Room extends DurableObject {
         return;
       }
 
+      case 'emoji': {
+        const emoji = pickEmoji(msg.emoji);
+        if (!emoji) throw new Error('That icon is not available.');
+        if (player.emoji === emoji) return;
+        player.emoji = emoji;
+        if (r.story && r.story.setterId === player.id) r.story.setterEmoji = emoji;
+        this.rosterDirty = true;
+        await this.commit();
+        return;
+      }
+
       default:
         throw new Error(`Unknown message type: ${msg.type}`);
     }
@@ -275,6 +292,7 @@ export class Room extends DurableObject {
         id: crypto.randomUUID(),
         token: crypto.randomUUID(),
         nick: this.uniqueNick(requestedNick),
+        emoji: pickEmoji(msg.emoji, r.nextOrder),
         score: 0,
         wins: 0,
         order: r.nextOrder++,
@@ -298,6 +316,8 @@ export class Room extends DurableObject {
       }
       player.connected = true;
       player.lastSeen = now();
+      const emoji = pickEmoji(msg.emoji);
+      if (emoji) player.emoji = emoji;
     }
     r.emptySince = null;
     this.rosterDirty = true;
@@ -374,6 +394,7 @@ export class Room extends DurableObject {
     if (!next) return false;
     r.story.setterId = next.id;
     r.story.setterNick = next.nick;
+    r.story.setterEmoji = next.emoji;
     r.story.setterOrder = next.order;
     r.lastSetterOrder = next.order;
     if (r.phase === 'theme') r.deadline = now() + r.settings.themeSeconds * 1000;
@@ -431,6 +452,7 @@ export class Room extends DurableObject {
       length: 'medium',
       setterId: setter.id,
       setterNick: setter.nick,
+      setterEmoji: setter.emoji,
       setterOrder: setter.order,
       sentences: [],
       weights: normalizeWeights(r.learned),
@@ -524,6 +546,7 @@ export class Room extends DurableObject {
           text: c.text,
           authorId: c.playerId,
           authorNick: p ? p.nick : 'Someone who left',
+          authorEmoji: p ? p.emoji : '',
           share: row.share,
           dims: row.dims,
           closure: row.closure,
@@ -533,7 +556,9 @@ export class Room extends DurableObject {
       });
       const eligible = rows.filter((x) => !x.filtered);
       const top = eligible.slice(0, TOP_N).map((x, i) => ({ index: i, ...x }));
-      const others = eligible.slice(TOP_N, TOP_N + OTHERS_N).map((x) => ({ text: x.text, authorNick: x.authorNick, share: x.share }));
+      const others = eligible
+        .slice(TOP_N, TOP_N + OTHERS_N)
+        .map((x) => ({ text: x.text, authorNick: x.authorNick, authorEmoji: x.authorEmoji, share: x.share }));
       const othersTotal = Math.max(0, eligible.length - TOP_N);
       const filtered = rows.filter((x) => x.filtered).map((x) => ({ authorId: x.authorId, text: x.text, flags: x.flags }));
       const winner = top[0] || null;
@@ -586,6 +611,7 @@ export class Room extends DurableObject {
         text: outcome.winnerText,
         authorId: outcome.winnerId,
         authorNick: author ? author.nick : 'Someone who left',
+        authorEmoji: author ? author.emoji : '',
         share: outcome.top[0].share,
         round: r.round.index,
       });
@@ -645,6 +671,28 @@ export class Room extends DurableObject {
     }
     r.phase = 'storyEnd';
     r.deadline = now() + r.settings.storyEndSeconds * 1000;
+    r.lastStory.jevScore = { pending: true };
+    await this.commit();
+    await this.scoreLastStory();
+  }
+
+  // Jev rates the finished story while the end screen is up. The score is
+  // attached only if that same story is still the one on screen.
+  async scoreLastStory() {
+    const story = this.room && this.room.lastStory;
+    if (!story) return;
+    const endedAt = story.endedAt;
+    let jevScore;
+    try {
+      const s = await scoreStory(this.env, { theme: story.theme, sentences: story.sentences.map((x) => x.text), weights: story.weights });
+      jevScore = { ...s, scoredAt: now() };
+    } catch (err) {
+      console.error('story score failed', err);
+      jevScore = { error: STORY_SCORE_ERROR };
+    }
+    const r = this.room;
+    if (!r || !r.lastStory || r.lastStory.endedAt !== endedAt) return;
+    r.lastStory.jevScore = jevScore;
     await this.commit();
   }
 
@@ -781,7 +829,7 @@ export class Room extends DurableObject {
     const rating = this.rating();
     const players = Object.values(r.players)
       .sort((a, b) => a.order - b.order)
-      .map((p) => ({ id: p.id, nick: p.nick, score: p.score, wins: p.wins, connected: p.connected }));
+      .map((p) => ({ id: p.id, nick: p.nick, emoji: p.emoji, score: p.score, wins: p.wins, connected: p.connected }));
     const story = r.story
       ? {
           index: r.story.index,
@@ -789,6 +837,7 @@ export class Room extends DurableObject {
           length: r.story.length,
           setterId: r.story.setterId,
           setterNick: r.players[r.story.setterId]?.nick || r.story.setterNick,
+          setterEmoji: r.players[r.story.setterId]?.emoji || r.story.setterEmoji || '',
           sentences: r.story.sentences,
           weights: r.story.weights,
         }
@@ -824,6 +873,7 @@ export class Room extends DurableObject {
       lastStory: r.phase === 'storyEnd' ? r.lastStory : null,
       storyCount: r.storyCount,
       nextSetterNick: r.phase === 'storyEnd' ? nextSetter(this.connectedPlayers(), r.lastSetterOrder)?.nick || null : null,
+      nextSetterEmoji: r.phase === 'storyEnd' ? nextSetter(this.connectedPlayers(), r.lastSetterOrder)?.emoji || '' : '',
       learned: r.learned,
       feedback: r.feedback,
     };
