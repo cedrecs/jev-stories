@@ -76,29 +76,6 @@ scripts/             make-icons.mjs (icons), load-test.mjs (synthetic players)
 tests/               node --test suites
 ```
 
-## Local development
-
-Prerequisites: Node 20 or newer, a TypeSafe API key from
-https://console.typesafe.ai/keys.
-
-```
-npm install
-copy .dev.vars.example .dev.vars     # then put your key in .dev.vars
-npm run dev                          # http://localhost:8787
-npm test
-```
-
-`.dev.vars` is gitignored. To develop without a key, set `MOCK_JUDGE=1` in
-`.dev.vars` instead: a fake judge picks at random.
-
-To simulate several players on one machine, open the room in tabs on
-different origins (`http://localhost:8787` and `http://127.0.0.1:8787`), since
-tabs on the same origin share the saved seat. For many players:
-
-```
-node scripts/load-test.mjs --url=ws://localhost:8787 --room=E --players=100 --stories=1 --verbose
-```
-
 ## Settings
 
 Settings are fixed per deployment, not per room or host. Defaults: 90 s to
@@ -124,13 +101,6 @@ Re-run `npm run deploy` after code changes; the secret stays.
 On the very first deploy the `workers.dev` subdomain is new and its TLS
 certificate takes a few minutes to issue. Until then browsers show a
 connection error. Nothing is wrong, wait and retry.
-
-## Planned for version 2
-
-- Claude-written bot players so a room can run with one human.
-- Persistent accounts and a leaderboard.
-- Custom rooms with codes, and the "install app" button on the home screen
-  (the PWA is installable today through the browser's own menu).
 
 ## Credits
 
