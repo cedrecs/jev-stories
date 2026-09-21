@@ -177,7 +177,12 @@ export class Room extends DurableObject {
     if (stillOpen) return;
     p.connected = false;
     p.lastSeen = now();
-    if (this.connectedPlayers().length === 0) this.room.emptySince = now();
+    if (this.connectedPlayers().length === 0) {
+      this.room.emptySince = now();
+      // The last person has gone (closed the tab or dropped): the next people
+      // to arrive start a fresh story.
+      this.resetStory();
+    }
     this.rosterDirty = true;
     await this.afterPlayerChange();
   }
@@ -260,17 +265,6 @@ export class Room extends DurableObject {
         return;
       }
 
-      case 'emoji': {
-        const emoji = pickEmoji(msg.emoji);
-        if (!emoji) throw new Error('That icon is not available.');
-        if (player.emoji === emoji) return;
-        player.emoji = emoji;
-        if (r.story && r.story.setterId === player.id) r.story.setterEmoji = emoji;
-        this.rosterDirty = true;
-        await this.commit();
-        return;
-      }
-
       default:
         throw new Error(`Unknown message type: ${msg.type}`);
     }
@@ -288,6 +282,10 @@ export class Room extends DurableObject {
       if (Object.keys(r.players).length >= r.settings.maxPlayers) {
         return this.safeSend(ws, { type: 'error', message: 'This room is full right now. Try another room.', fatal: true });
       }
+      // Nobody else is connected: whatever story was left behind is abandoned
+      // (for example one paused before this rule existed), so a newcomer starts
+      // fresh instead of landing in the middle of it.
+      if (this.connectedPlayers().length === 0 && (r.story || r.lastStory)) this.resetStory();
       player = {
         id: crypto.randomUUID(),
         token: crypto.randomUUID(),
@@ -314,10 +312,10 @@ export class Room extends DurableObject {
           }
         }
       }
+      // A returning player keeps the icon they joined with: icons are chosen
+      // before joining and cannot change once in a room.
       player.connected = true;
       player.lastSeen = now();
-      const emoji = pickEmoji(msg.emoji);
-      if (emoji) player.emoji = emoji;
     }
     r.emptySince = null;
     this.rosterDirty = true;
@@ -331,6 +329,8 @@ export class Room extends DurableObject {
     delete r.players[player.id];
     if (r.round) delete r.round.submissions[player.id];
     if (r.results && r.results.taps) delete r.results.taps[player.id];
+    // The last person in the room has left: the next arrivals get a fresh story.
+    if (this.connectedPlayers().length === 0) this.resetStory();
     try {
       ws.serializeAttachment({ playerId: null });
       this.safeSend(ws, { type: 'left' });
@@ -424,6 +424,21 @@ export class Room extends DurableObject {
       r.phase = phase;
       r.deadline = now() + Math.max(remainingMs, MIN_RESUME_MS);
     }
+  }
+
+  // Everyone has gone: drop the abandoned story so the next players choose a
+  // new theme. Story numbering starts over; the room keeps what it has
+  // learned from players' picks.
+  resetStory() {
+    const r = this.room;
+    r.story = null;
+    r.round = null;
+    r.results = null;
+    r.lastStory = null;
+    r.storyCount = 0;
+    r.phase = 'paused';
+    r.paused = { phase: 'theme', remainingMs: 0 };
+    r.deadline = null;
   }
 
   // --------------------------------------------------------- Game phases
@@ -829,7 +844,7 @@ export class Room extends DurableObject {
     const rating = this.rating();
     const players = Object.values(r.players)
       .sort((a, b) => a.order - b.order)
-      .map((p) => ({ id: p.id, nick: p.nick, emoji: p.emoji, score: p.score, wins: p.wins, connected: p.connected }));
+      .map((p) => ({ id: p.id, nick: p.nick, emoji: p.emoji, score: p.score, wins: p.wins, connected: p.connected, joinedAt: p.joinedAt }));
     const story = r.story
       ? {
           index: r.story.index,

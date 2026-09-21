@@ -3,7 +3,7 @@
 
 // Bump when the snapshot or message protocol changes: clients that see a
 // different version in a snapshot reload themselves to pick up new code.
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 // Player icons. Stored as code points so the source stays plain ASCII; the
 // client carries the same list. A player may pick any of them, repeats allowed.
@@ -234,7 +234,7 @@ export const MODERATION_THRESHOLD = 0.5;
 
 export const DEFAULT_SETTINGS = {
   writingSeconds: 60,
-  themeSeconds: 60,
+  themeSeconds: 90,
   revealSeconds: 30,
   storyEndSeconds: 30,
   maxSentenceChars: 280,

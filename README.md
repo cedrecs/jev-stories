@@ -9,7 +9,7 @@ Live: https://jev-stories.jev-stories.workers.dev
 ## How a game plays
 
 1. Pick an emoji icon, a nickname and one of four rooms. No accounts, no
-   room codes. The icon can be changed any time from the Scores panel.
+   room codes. The icon is fixed once you join a room.
 2. A room runs whenever two or more people are in it. There is no host.
 3. Players take turns as **theme setter**. The setter writes a theme, picks a
    story length (Short 4 to 7 lines, Medium 7 to 12, Long 12 to 18) and can
@@ -33,7 +33,12 @@ Live: https://jev-stories.jev-stories.workers.dev
    100 on the same four qualities it uses for lines, and the story is shown
    for 30 seconds with Copy, Download and Share.
 8. Scores last while you stay. Leaving wipes them; a refresh or a brief drop
-   keeps the seat for 60 seconds.
+   keeps the seat for 60 seconds. The Scores panel shows Jev's judgement
+   criteria as a pie chart, then your score, then everyone else's from highest
+   to lowest with how long each player has been in the room.
+9. When the last person leaves a room, the room resets: the next players start
+   a fresh story with a new theme. The room keeps what it has learned from
+   players' picks.
 
 ## Rooms and moderation
 
@@ -88,7 +93,7 @@ tests/               node --test suites
 ## Settings
 
 Settings are fixed per deployment, not per room or host. Defaults: 60 s to
-write a line (cap 120), 60 s to set a theme, 30 s reveal, 30 s story-end
+write a line (cap 120), 90 s to set a theme, 30 s reveal, 30 s story-end
 screen, 280 characters per line, 100 players per room. Override with `[vars]`
 in `wrangler.toml` (see the comments there) and redeploy.
 

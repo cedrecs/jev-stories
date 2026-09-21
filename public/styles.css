@@ -11,6 +11,11 @@
   --jev: #5fd3c4;
   --jev-ink: #05221f;
   --danger: #ff6b6b;
+  /* Jev's four judging qualities, in fixed order (validated on the dark panel). */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
   --ok: #7ad68a;
   --radius: 16px;
   --radius-s: 10px;
@@ -222,8 +227,6 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .emoji-cur:hover { border-color: var(--accent); }
 .emoji-cur:active { transform: scale(0.94); }
 .av { margin-right: 5px; }
-.drawer-me { margin: 12px 0 6px; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.drawer-me .emoji-cur { width: 44px; height: 38px; font-size: 1.35rem; }
 .step { display: block; font-weight: 600; font-size: 0.95rem; color: var(--text); }
 .stack > .step-gap { margin-top: 18px; }
 .room-note { margin-top: 10px; }
@@ -269,8 +272,25 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .result.own { opacity: 0.9; }
 .tapcount { display: block; margin-top: 8px; font-size: 0.8rem; color: var(--muted); min-height: 1em; }
 .tapcount.fav { color: var(--accent); font-weight: 600; }
-.drawer-jev { margin-top: 18px; }
-.drawer-jev h3 { margin-top: 0; }
+.drawer-jev { margin-top: 4px; }
+.pie { display: block; width: 100%; max-width: 320px; height: auto; margin: 0 auto; }
+.pie path,
+.pie circle { stroke: var(--card); stroke-width: 2; stroke-linejoin: round; }
+.pie-label { fill: var(--muted); font-size: 12px; font-family: var(--font-body); }
+.pie-value { fill: var(--text); font-weight: 700; }
+.pie-legend {
+  list-style: none;
+  padding: 0;
+  margin: 2px 0 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.pie-legend b { color: var(--text); font-weight: 600; margin-left: 5px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.pie-note { margin: 8px 0 0; }
 
 /* ---------- players ---------- */
 .players { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -417,7 +437,14 @@ details.card[open] summary { margin-bottom: 10px; }
   padding-top: calc(18px + env(safe-area-inset-top));
   overflow: auto;
 }
-.drawer-head { display: flex; justify-content: space-between; align-items: center; }
+.drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.drawer-head h2,
+.drawer-title { font-size: 1.15rem; margin: 0; }
+.drawer-title { margin: 20px 0 4px; }
+.scores li.me { background: rgba(240, 179, 74, 0.08); border-radius: var(--radius-s); padding-left: 10px; padding-right: 10px; }
+.scores .who { display: flex; flex-direction: column; min-width: 0; }
+.scores .who-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.scores .since { font-size: 0.75rem; color: var(--muted); }
 .scores { list-style: none; padding: 0; margin: 0; }
 .scores li {
   display: flex;

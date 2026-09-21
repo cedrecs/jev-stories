@@ -134,7 +134,6 @@
     rooms: ROOMS,
     homeError: '',
     emoji: null,
-    emojiTimer: null,
     busy: false,
     code: null,
     nick: '',
@@ -839,28 +838,91 @@
     screenEl.querySelectorAll('[data-deadline]').forEach((el) => (el.dataset.deadline = s.deadline || ''));
   }
 
+  // Pie of Jev's four judging weights. Slices run clockwise from 12 o'clock in
+  // the fixed dimension order, each colour tied to its dimension; every slice
+  // is labelled with its name and share, so colour never carries identity alone.
+  function pieHtml(weights) {
+    const p = weightsPct(weights);
+    const slices = DIMS.map((d, i) => ({ d, frac: p[d.key], color: `var(--series-${i + 1})` })).filter((x) => x.frac > 0);
+    const W = 320;
+    const H = 172;
+    const cx = W / 2;
+    const cy = H / 2;
+    const r = 56;
+    const lr = 64;
+    const at = (ang, rad) => [cx + rad * Math.sin(ang), cy - rad * Math.cos(ang)];
+    const marks = [];
+    const labels = [];
+    let a = 0;
+    for (const s of slices) {
+      const a0 = a;
+      const a1 = a + s.frac * 2 * Math.PI;
+      a = a1;
+      const title = `<title>${esc(`${s.d.label} ${pct(s.frac)}`)}</title>`;
+      if (slices.length === 1) {
+        marks.push(`<circle cx="${cx}" cy="${cy}" r="${r}" style="fill:${s.color}">${title}</circle>`);
+      } else {
+        const [x0, y0] = at(a0, r);
+        const [x1, y1] = at(a1, r);
+        const large = a1 - a0 > Math.PI ? 1 : 0;
+        marks.push(
+          `<path d="M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z" style="fill:${s.color}">${title}</path>`,
+        );
+      }
+      const mid = (a0 + a1) / 2;
+      const [lx, ly] = at(mid, lr);
+      labels.push({ x: lx, y: ly, right: Math.sin(mid) >= 0, name: s.d.label, value: pct(s.frac) });
+    }
+    // Keep labels on each side at least one line apart.
+    for (const side of [true, false]) {
+      const group = labels.filter((l) => l.right === side).sort((m, n) => m.y - n.y);
+      for (let i = 1; i < group.length; i++) if (group[i].y - group[i - 1].y < 15) group[i].y = group[i - 1].y + 15;
+    }
+    const text = labels
+      .map(
+        (l) =>
+          `<text x="${(l.x + (l.right ? 4 : -4)).toFixed(1)}" y="${(l.y + 4).toFixed(1)}" text-anchor="${l.right ? 'start' : 'end'}" class="pie-label">${esc(
+            l.name,
+          )} <tspan class="pie-value">${esc(l.value)}</tspan></text>`,
+      )
+      .join('');
+    const summary = slices.map((s) => `${s.d.label} ${pct(s.frac)}`).join(', ');
+    return `<svg class="pie" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(`Jev's judgement criteria: ${summary}`)}">${marks.join('')}${text}</svg>
+      <ul class="pie-legend">${DIMS.map(
+        (d, i) => `<li><span class="swatch" style="background:var(--series-${i + 1})"></span>${d.label}<b>${pct(p[d.key])}</b></li>`,
+      ).join('')}</ul>`;
+  }
+
+  // How long a player has been in the room, from their join time.
+  function sinceText(joinedAt) {
+    const start = Number(joinedAt) || 0;
+    if (!start) return '';
+    const min = Math.floor(Math.max(0, Date.now() + app.clockOffset - start) / 60000);
+    if (min < 1) return 'just joined';
+    if (min < 60) return `playing ${min} min`;
+    return `playing ${Math.floor(min / 60)} h ${min % 60} min`;
+  }
+
   function renderDrawer(s) {
     drawer.hidden = !app.drawerOpen;
     if (!app.drawerOpen || !s) return;
     const setterId = s.story ? s.story.setterId : null;
-    const sorted = [...s.players].sort((a, b) => b.score - a.score);
-    $('#drawer-list').innerHTML = sorted
-      .map(
-        (p) =>
-          `<li><span class="dot ${p.connected ? '' : 'off'}"></span>${av(p.emoji)}${esc(p.nick)}${
-            p.id === setterId ? '<span class="badge jev">theme</span>' : ''
-          }${p.id === s.youId ? '<span class="badge you">you</span>' : ''}<span class="pts">${p.score}</span></li>`,
-      )
-      .join('');
-    const meRow = $('#drawer-me');
-    if (meRow) meRow.innerHTML = `<div class="row between"><span class="muted small">Your icon</span>${emojiPickerHtml('emoji-room')}</div>`;
-    const fb = s.feedback || { rounds: 0, taps: 0, agreements: 0 };
-    const agree = fb.taps ? `${Math.round((fb.agreements / fb.taps) * 100)}%` : 'no taps yet';
-    $('#drawer-jev').innerHTML = `
-      <h3>Jev and this room</h3>
-      <p class="muted small">Players agreed with Jev's pick ${esc(agree)}${fb.taps ? ` of the time across ${fb.taps} ${fb.taps === 1 ? 'tap' : 'taps'}` : ''}. Taps nudge the defaults below.</p>
-      <div class="label">Default taste</div>
-      <div class="chips">${mixChipsHtml(s.learned)}</div>`;
+    // The mix Jev uses right now: this story's sliders, else the room defaults.
+    const weights = s.story && s.story.weights ? s.story.weights : s.learned;
+    const note = s.story
+      ? `Set by ${av(s.story.setterEmoji)}${esc(s.story.setterNick)} for this round.`
+      : "The room's defaults, shaped by players' picks.";
+    $('#drawer-jev').innerHTML = `${pieHtml(weights)}<p class="muted small pie-note">${note}</p>`;
+    // Your own row first, then everyone else from highest score to lowest.
+    const me = s.players.find((p) => p.id === s.youId);
+    const others = s.players.filter((p) => p.id !== s.youId).sort((a, b) => b.score - a.score || (a.joinedAt || 0) - (b.joinedAt || 0));
+    const row = (p, mine) =>
+      `<li class="${mine ? 'me' : ''}"><span class="dot ${p.connected ? '' : 'off'}"></span>${av(p.emoji)}<span class="who"><span class="who-name">${esc(
+        p.nick,
+      )}${p.id === setterId ? '<span class="badge jev">theme</span>' : ''}${mine ? '<span class="badge you">you</span>' : ''}</span><span class="since" data-since="${
+        Number(p.joinedAt) || 0
+      }">${sinceText(p.joinedAt)}</span></span><span class="pts">${p.score}</span></li>`;
+    $('#drawer-list').innerHTML = (me ? row(me, true) : '') + others.map((p) => row(p, false)).join('');
   }
 
   // ----------------------------------------------------------------- timer
@@ -881,6 +943,10 @@
       const total = Number(el.dataset.total) || 1;
       const frac = dl ? Math.max(0, Math.min(1, (dl - now) / total)) : 0;
       if (el.firstElementChild) el.firstElementChild.style.width = `${frac * 100}%`;
+    });
+    document.querySelectorAll('[data-since]').forEach((el) => {
+      const t = sinceText(el.dataset.since);
+      if (el.textContent !== t) el.textContent = t;
     });
   }
   setInterval(tick, 250);
@@ -974,15 +1040,12 @@
         renderDrawer(s);
         return;
       case 'emoji-next': {
+        // Icons are chosen on the home screen only; they are fixed once in a room.
+        if (app.screen !== 'home') return;
         const i = Math.max(0, EMOJIS.indexOf(app.emoji));
         app.emoji = EMOJIS[(i + 1) % EMOJIS.length];
         store.set('jev:emoji', app.emoji);
         document.querySelectorAll('[data-emoji-current]').forEach((el) => (el.textContent = app.emoji));
-        if (app.screen === 'room') {
-          // Tapping through several icons sends only the one you stop on.
-          clearTimeout(app.emojiTimer);
-          app.emojiTimer = setTimeout(() => send({ type: 'emoji', emoji: app.emoji }), 400);
-        }
         return;
       }
       case 'ask-leave':

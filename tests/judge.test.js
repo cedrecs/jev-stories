@@ -240,9 +240,9 @@ test('mockAnswers returns well-formed answers for every question and flags mock 
   assert.equal(scored.ranked.find((r) => r.id === 'D').filtered, true);
 });
 
-test('default timings: 60 s to set a theme or write a line, 30 s for the reveal and the story end', () => {
+test('default timings: 90 s to set a theme, 60 s to write a line, 30 s for the reveal and the story end', () => {
   const s = settingsFromEnv({});
-  assert.equal(s.themeSeconds, 60);
+  assert.equal(s.themeSeconds, 90);
   assert.equal(s.writingSeconds, 60);
   assert.equal(s.revealSeconds, 30);
   assert.equal(s.storyEndSeconds, 30);

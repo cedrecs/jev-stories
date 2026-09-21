@@ -29,7 +29,7 @@ enabled = true
 # (values are clamped to the ranges in src/rules.js):
 # [vars]
 # WRITING_SECONDS = "60"      # 30 to 120, per line
-# THEME_SECONDS = "60"        # 30 to 180, for the theme setter
+# THEME_SECONDS = "90"        # 30 to 180, for the theme setter
 # REVEAL_SECONDS = "30"       # 10 to 120, the tap-and-read pause after each pick
 # STORY_END_SECONDS = "30"    # 10 to 120, the finished-story screen
 # MAX_SENTENCE_CHARS = "280"  # 80 to 500
