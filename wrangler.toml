@@ -1,0 +1,37 @@
+name = "jev-stories"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# Static PWA shell. Unknown paths (e.g. /r/ABCD invite links) fall back to index.html.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/ws/*"]
+
+# One Durable Object per room: holds players, the story, timers and the WebSockets.
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+[observability]
+enabled = true
+
+# Secrets are NOT set here.
+#   local:  put TYPESAFE_API_KEY=... in .dev.vars (gitignored)
+#   prod:   npx wrangler secret bulk .dev.vars
+#
+# Room settings are fixed per deployment. Uncomment to change the defaults
+# (values are clamped to the ranges in src/rules.js):
+# [vars]
+# WRITING_SECONDS = "90"      # 30 to 120, per line
+# THEME_SECONDS = "60"        # 30 to 180, for the theme setter
+# REVEAL_SECONDS = "30"       # 10 to 120, the tap-and-read pause after each pick
+# STORY_END_SECONDS = "30"    # 10 to 120, the finished-story screen
+# MAX_SENTENCE_CHARS = "280"  # 80 to 500
+# MAX_PLAYERS = "100"         # 2 to 100, per room
+# MOCK_JUDGE = "1"            # development only: fake judge when no key is set

@@ -1,0 +1,4 @@
+# Copy to .dev.vars (same folder) for local development. Never commit .dev.vars.
+TYPESAFE_API_KEY=paste-your-key-here
+# Set to 1 to run without a key using a fake judge (development only)
+# MOCK_JUDGE=1

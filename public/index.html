@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Jev Stories</title>
+  <meta name="description" content="Everyone writes the next line of a shared story. Jev picks the winner.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#15121f">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Jev Stories">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header id="topbar" hidden>
+    <button class="tb-code" data-action="copy-link" title="Copy the invite link">
+      <b id="tb-room">Room</b> <span class="tb-label" id="tb-count"></span>
+    </button>
+    <span id="tb-story" class="tb-story"></span>
+    <div class="tb-actions">
+      <button class="tb-btn" data-action="toggle-scores" title="Scores">Scores</button>
+      <button class="tb-btn danger" data-action="ask-leave" title="Leave the room">Leave</button>
+    </div>
+  </header>
+  <div id="conn" hidden>Reconnecting…</div>
+
+  <main id="screen"></main>
+
+  <aside id="drawer" hidden>
+    <button class="drawer-backdrop" data-action="toggle-scores" aria-label="Close scores"></button>
+    <div class="drawer-panel">
+      <div class="drawer-head">
+        <h2>Scores</h2>
+        <button class="tb-btn" data-action="toggle-scores">Close</button>
+      </div>
+      <p class="muted small">One point per winning line. Scores last while you stay in the room.</p>
+      <ol id="drawer-list" class="scores"></ol>
+      <div id="drawer-jev" class="drawer-jev"></div>
+    </div>
+  </aside>
+
+  <dialog id="leave-dialog">
+    <form method="dialog" class="dialog-body">
+      <h2>Leave the room?</h2>
+      <p>Your score is wiped when you leave. You can come back any time.</p>
+      <div class="row end">
+        <button class="btn" type="button" data-action="cancel-leave">Stay</button>
+        <button class="btn danger" type="button" data-action="confirm-leave">Leave</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
