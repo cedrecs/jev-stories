@@ -16,17 +16,42 @@
   ];
   // Display fallback until /api/rooms answers.
   const ROOMS = [
-    { code: 'E', label: 'Safe for Everyone', slug: 'everyone', tagline: 'Clean fun for all ages', filters: ['violence', 'sexual content', 'swearing'], players: 0 },
+    {
+      code: 'E',
+      label: 'Safe for Everyone',
+      slug: 'safe-for-everyone',
+      aliases: ['everyone'],
+      tagline: 'Clean fun for all ages',
+      filters: ['violence', 'sexual content', 'swearing'],
+      players: 0,
+    },
     {
       code: 'T',
       label: 'Moderated for Teens',
-      slug: 'teen',
+      slug: 'moderated-for-teens',
+      aliases: ['teen', 'teens'],
       tagline: 'Mild language and cartoon mayhem are fine',
       filters: ['graphic violence', 'explicit sexual content', 'strong profanity'],
       players: 0,
     },
-    { code: 'M', label: 'Mature Audience Only', slug: 'mature', tagline: 'Strong language and adult humor allowed', filters: ['pornographic description'], players: 0 },
-    { code: 'A', label: 'Absolute Degenerates', slug: 'adult', tagline: 'Anything goes', filters: [], players: 0 },
+    {
+      code: 'M',
+      label: 'Mature Audience Only',
+      slug: 'mature-audience-only',
+      aliases: ['mature'],
+      tagline: 'Strong language and adult humor allowed',
+      filters: ['pornographic description'],
+      players: 0,
+    },
+    {
+      code: 'A',
+      label: 'Absolute Degenerates',
+      slug: 'absolute-degenerates',
+      aliases: ['adult', 'degenerates'],
+      tagline: 'Anything goes',
+      filters: [],
+      players: 0,
+    },
   ];
 
   // Player icons: same list and order as the server (src/rules.js).
@@ -133,7 +158,8 @@
   };
 
   function roomBySlug(slug) {
-    return app.rooms.find((r) => r.slug === String(slug || '').toLowerCase()) || null;
+    const s = String(slug || '').toLowerCase();
+    return app.rooms.find((r) => r.slug === s || (r.aliases || []).includes(s)) || null;
   }
   function roomByCode(code) {
     return app.rooms.find((r) => r.code === code) || null;
@@ -410,8 +436,8 @@
     const savedNick = store.get('jev:nick') || '';
     screenEl.innerHTML = `
       <section class="hero">
-        <img class="logo" src="/icons/icon-512.png" alt="Jev Stories" width="128" height="128">
         <h1>Jev Stories</h1>
+        <img class="logo" src="/icons/icon-512.png" alt="" width="128" height="128">
         <p class="tagline">Everyone writes the next line. Jev picks the winner.</p>
       </section>
       <section class="card stack">

@@ -117,7 +117,7 @@ test('a filter that fires disqualifies the line and records which filter', () =>
   assert.deepEqual(rowA.flags, ['profanity']);
   assert.equal(res.winner.id, 'B');
 
-  // The Adult room only asks about hate, so the same answers do not filter A.
+  // Absolute Degenerates only asks about hate, so the same answers do not filter A.
   const adult = scoreResults({ answers: a, candidates: cands, weights: normalizeWeights({}), storyLength: 1, length: 'medium', filters: RATINGS.A.filters });
   assert.equal(adult.winner.id, 'A');
 });
@@ -187,8 +187,12 @@ test('nextSetter takes the next join order and wraps around', () => {
 });
 
 test('rooms are looked up by slug and settings are clamped from the environment', () => {
-  assert.equal(ratingFromSlug('teen').code, 'T');
-  assert.equal(ratingFromSlug('TEEN').code, 'T');
+  assert.equal(ratingFromSlug('safe-for-everyone').code, 'E');
+  assert.equal(ratingFromSlug('moderated-for-teens').code, 'T');
+  assert.equal(ratingFromSlug('mature-audience-only').code, 'M');
+  assert.equal(ratingFromSlug('Absolute-Degenerates').code, 'A');
+  assert.equal(ratingFromSlug('teen').code, 'T', 'links from before the rename still work');
+  assert.equal(ratingFromSlug('ADULT').code, 'A');
   assert.equal(ratingFromSlug('nope'), null);
   const s = settingsFromEnv({ WRITING_SECONDS: '999', MAX_PLAYERS: '5000', REVEAL_SECONDS: 'abc' });
   assert.equal(s.writingSeconds, 120);

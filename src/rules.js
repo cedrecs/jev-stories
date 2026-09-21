@@ -104,6 +104,10 @@ export const DIMENSIONS = [
 // filter becomes one yes/no (Noul) question per candidate sentence; a line
 // answering yes to any filter of its room cannot win. Hate and harassment
 // are filtered in every room.
+//
+// Naming: players see the label and the link slug. The one-letter code is
+// only an internal key; it names the room's saved state (players, story,
+// learned slider defaults), so it must never change.
 
 const HATE = {
   key: 'hateful',
@@ -119,7 +123,8 @@ export const RATINGS = {
   E: {
     code: 'E',
     label: 'Safe for Everyone',
-    slug: 'everyone',
+    slug: 'safe-for-everyone',
+    aliases: ['everyone'],
     tagline: 'Clean fun for all ages',
     filters: [
       {
@@ -155,7 +160,8 @@ export const RATINGS = {
   T: {
     code: 'T',
     label: 'Moderated for Teens',
-    slug: 'teen',
+    slug: 'moderated-for-teens',
+    aliases: ['teen', 'teens'],
     tagline: 'Mild language and cartoon mayhem are fine',
     filters: [
       {
@@ -191,7 +197,8 @@ export const RATINGS = {
   M: {
     code: 'M',
     label: 'Mature Audience Only',
-    slug: 'mature',
+    slug: 'mature-audience-only',
+    aliases: ['mature'],
     tagline: 'Strong language and adult humor allowed',
     filters: [
       {
@@ -209,14 +216,18 @@ export const RATINGS = {
   A: {
     code: 'A',
     label: 'Absolute Degenerates',
-    slug: 'adult',
+    slug: 'absolute-degenerates',
+    aliases: ['adult', 'degenerates'],
     tagline: 'Anything goes',
     filters: [HATE],
   },
 };
 export const RATING_CODES = Object.keys(RATINGS);
+// Rooms are found by their link slug, or by an older slug kept as an alias so
+// links shared before the rename still open the same room.
 export function ratingFromSlug(slug) {
-  return Object.values(RATINGS).find((r) => r.slug === String(slug || '').toLowerCase()) || null;
+  const s = String(slug || '').toLowerCase();
+  return Object.values(RATINGS).find((r) => r.slug === s || (r.aliases || []).includes(s)) || null;
 }
 // A candidate is filtered when an enabled filter's probability passes this.
 export const MODERATION_THRESHOLD = 0.5;

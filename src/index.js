@@ -1,8 +1,10 @@
 // Worker entry: answers room lookups and hands WebSocket upgrades to the
 // room's Durable Object. Everything else is a static asset.
 //
-// There are four fixed rooms, one per content rating (E, T, M, A). A room's
-// Durable Object is created on first contact and lives on from then.
+// There are four fixed rooms: Safe for Everyone, Moderated for Teens, Mature
+// Audience Only and Absolute Degenerates, keyed internally by the codes E, T,
+// M and A. A room's Durable Object is created on first contact and lives on
+// from then.
 
 import { Room } from './room.js';
 import { RATINGS, RATING_CODES } from './rules.js';
@@ -26,6 +28,7 @@ function publicRoom(code, info) {
     code,
     label: r.label,
     slug: r.slug,
+    aliases: r.aliases || [],
     tagline: r.tagline,
     // Hate and harassment are filtered in every room; the home screen says so
     // once, so each room lists only its own extra filters.

@@ -37,16 +37,17 @@ Live: https://jev-stories.jev-stories.workers.dev
 
 ## Rooms and moderation
 
-| Room | Jev filters |
-| --- | --- |
-| Safe for Everyone | any violence beyond slapstick, any sexual reference, any swearing |
-| Moderated for Teens | graphic violence, explicit sexual content, strong profanity |
-| Mature Audience Only | pornographic description |
-| Absolute Degenerates | nothing extra |
+| Room | Link | Jev filters |
+| --- | --- | --- |
+| Safe for Everyone | `/safe-for-everyone` | any violence beyond slapstick, any sexual reference, any swearing |
+| Moderated for Teens | `/moderated-for-teens` | graphic violence, explicit sexual content, strong profanity |
+| Mature Audience Only | `/mature-audience-only` | pornographic description |
+| Absolute Degenerates | `/absolute-degenerates` | nothing extra |
 
 Hate and harassment are filtered out in every room. A filtered line cannot
 win. Its author sees why; nobody else sees the line. The presets live in
-`src/rules.js` (`RATINGS`).
+`src/rules.js` (`RATINGS`). Links from before the rooms were renamed,
+`/everyone`, `/teen`, `/mature` and `/adult`, still open the same rooms.
 
 ## How Jev judges a round
 
@@ -93,7 +94,11 @@ in `wrangler.toml` (see the comments there) and redeploy.
 
 ## Deploy to Cloudflare
 
-Durable Objects with SQLite storage are included in the Workers Free plan.
+The live game runs on Cloudflare's Workers Paid plan, $5 a month. The free
+plan is fine for trying it out, but its daily limits are too tight for busy
+rooms: every player action is a Durable Object storage write, the free plan
+allows 100,000 writes a day, and once they run out rooms stop saving until the
+next day. Workers Paid includes 50 million writes a month with no daily caps.
 
 ```
 npx wrangler login --browser=false   # prints a link: open it, click Allow

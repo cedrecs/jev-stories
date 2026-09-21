@@ -191,9 +191,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 }
 
 /* ---------- home ---------- */
-.hero { text-align: center; padding: 28px 0 12px; }
-.hero .logo { width: 128px; height: 128px; filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.45)); }
-.hero h1 { margin-top: 12px; }
+.hero { text-align: center; padding: 20px 0 12px; }
+.hero h1 { margin: 0 0 14px; }
+.hero .logo { display: block; margin: 0 auto 12px; width: 128px; height: 128px; filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.45)); }
 .tagline { color: var(--muted); font-size: 1.05rem; }
 .how { margin: 22px 0 18px; }
 .how ol { padding-left: 20px; color: var(--muted); }
