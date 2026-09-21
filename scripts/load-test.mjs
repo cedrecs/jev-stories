@@ -18,6 +18,10 @@ const PLAYERS = Number(args.players || 20);
 const STORIES = Number(args.stories || 1);
 const TIMEOUT_MS = Number(args.timeout || 8 * 60_000);
 const VERBOSE = Boolean(args.verbose);
+// --clear-taps: every bot that picks a line clears its pick a few seconds
+// later, so the tap traffic is real but no final pick is left behind. Use it
+// against a production room so its learned taste is not skewed by bots.
+const CLEAR_TAPS = Boolean(args['clear-taps']);
 
 const THEMES = ['A moose runs the last video store', 'Grandma joins a biker gang', 'The haunted vending machine', 'A pirate afraid of water'];
 const OPENERS = ['Nobody expected', 'Against all advice', 'On a Tuesday', 'For the third time that week', 'Somewhere near the freezer aisle'];
@@ -134,6 +138,7 @@ class Bot {
         if (choices.length && Math.random() < 0.7) {
           const pick = choices[Math.floor(Math.random() * choices.length)];
           setTimeout(() => this.send({ type: 'tap', index: pick.index }), 200 + Math.random() * 1500);
+          if (CLEAR_TAPS) setTimeout(() => this.send({ type: 'tap', index: null }), 3000 + Math.random() * 4000);
         }
       }
     }
@@ -162,7 +167,9 @@ class Bot {
 }
 
 async function main() {
-  console.log(`Joining ${PLAYERS} bots to room ${ROOM} at ${URL_BASE} for ${STORIES} ${STORIES === 1 ? 'story' : 'stories'}…`);
+  console.log(
+    `Joining ${PLAYERS} bots to room ${ROOM} at ${URL_BASE} for ${STORIES} ${STORIES === 1 ? 'story' : 'stories'}${CLEAR_TAPS ? ' (picks are cleared, learned taste untouched)' : ''}…`,
+  );
   const bots = Array.from({ length: PLAYERS }, (_, i) => new Bot(i));
   const t0 = Date.now();
   // Stagger connections a little so the room is not hit by 100 joins in one tick.
