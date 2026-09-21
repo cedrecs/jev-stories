@@ -16,10 +16,17 @@
   ];
   // Display fallback until /api/rooms answers.
   const ROOMS = [
-    { code: 'E', label: 'Everyone', slug: 'everyone', tagline: 'Clean fun for all ages', filters: [], players: 0 },
-    { code: 'T', label: 'Teen', slug: 'teen', tagline: 'Mild language and cartoon mayhem are fine', filters: [], players: 0 },
-    { code: 'M', label: 'Mature', slug: 'mature', tagline: 'Strong language and adult humor allowed', filters: [], players: 0 },
-    { code: 'A', label: 'Adult', slug: 'adult', tagline: 'Anything goes, except hate and harassment', filters: [], players: 0 },
+    { code: 'E', label: 'Safe for Everyone', slug: 'everyone', tagline: 'Clean fun for all ages', filters: ['violence', 'sexual content', 'swearing'], players: 0 },
+    {
+      code: 'T',
+      label: 'Moderated for Teens',
+      slug: 'teen',
+      tagline: 'Mild language and cartoon mayhem are fine',
+      filters: ['graphic violence', 'explicit sexual content', 'strong profanity'],
+      players: 0,
+    },
+    { code: 'M', label: 'Mature Audience Only', slug: 'mature', tagline: 'Strong language and adult humor allowed', filters: ['pornographic description'], players: 0 },
+    { code: 'A', label: 'Absolute Degenerates', slug: 'adult', tagline: 'Anything goes', filters: [], players: 0 },
   ];
 
   // Player icons: same list and order as the server (src/rules.js).
@@ -338,14 +345,14 @@
     topbar.hidden = false;
     connEl.hidden = !app.connLost;
     const room = roomByCode(app.code);
-    $('#tb-room').textContent = room ? `${room.label} room` : 'Room';
+    $('#tb-room').textContent = room ? room.label : 'Room';
     const s = app.state;
     if (!s) {
       $('#tb-count').textContent = '';
       $('#tb-story').textContent = '';
-      screenEl.innerHTML = `<section class="card center"><div class="spinner"></div><p class="muted">Joining the ${esc(
-        room ? room.label : '',
-      )} room…</p>${app.retries > 4 ? '<button class="btn" data-action="retry">Try again</button>' : ''}</section>`;
+      screenEl.innerHTML = `<section class="card center"><div class="spinner"></div><p class="muted">Joining ${esc(
+        room ? room.label : 'the room',
+      )}…</p>${app.retries > 4 ? '<button class="btn" data-action="retry">Try again</button>' : ''}</section>`;
       return;
     }
     const me = s.players.find((p) => p.id === s.youId) || null;
@@ -380,7 +387,6 @@
     return app.rooms
       .map(
         (r) => `<button class="room-card" data-action="join" data-code="${esc(r.code)}">
-          <span class="room-rating">${esc(r.code)}</span>
           <span class="room-body">
             <b>${esc(r.label)}</b>
             <span class="room-tagline">${esc(r.tagline)}</span>
@@ -408,8 +414,19 @@
         <h1>Jev Stories</h1>
         <p class="tagline">Everyone writes the next line. Jev picks the winner.</p>
       </section>
+      <section class="card stack">
+        <label for="nick" class="step">1. Pick an icon and submit a nickname</label>
+        <div class="nick-row">
+          ${emojiPickerHtml('emoji-home')}
+          <input id="nick" maxlength="20" autocomplete="nickname" placeholder="e.g. Captain Goose" value="${esc(savedNick)}">
+        </div>
+        <div class="step step-gap">2. Choose a room</div>
+        <div id="room-cards" class="room-list">${roomCardsHtml()}</div>
+        <p class="hint room-note">Note: all hate and harassment will be filtered out</p>
+        <p class="error" id="home-error">${esc(app.homeError)}</p>
+      </section>
       <section class="how">
-        <h2>How it plays</h2>
+        <h2>How to play</h2>
         <ol>
           <li><b>Take turns setting a theme.</b> The theme setter picks a length and tunes what Jev rewards.</li>
           <li><b>Everyone writes the next line.</b> One sentence each, against the clock.</li>
@@ -417,26 +434,15 @@
           <li><b>Tap your favorite.</b> Taps never change the pick, but they teach Jev what the room enjoys.</li>
           <li><b>Jev also decides when the story is done, and scores it.</b> Then the next player sets a theme, for as long as two of you are here.</li>
         </ol>
-      </section>
-      <section class="card stack">
-        <label for="nick"><span class="lbl">Your icon and nickname</span></label>
-        <div class="nick-row">
-          ${emojiPickerHtml('emoji-home')}
-          <input id="nick" maxlength="20" autocomplete="nickname" placeholder="e.g. Captain Goose" value="${esc(savedNick)}">
-        </div>
-        <p class="hint">Tap the icon or the arrows to change it, so friends can tell players apart.</p>
-        <div class="label" style="margin-top:12px">Pick a room</div>
-        <div id="room-cards" class="room-list">${roomCardsHtml()}</div>
-        <p class="error" id="home-error">${esc(app.homeError)}</p>
       </section>`;
   }
 
+  // The icon itself is the control: each tap moves to the next one and the
+  // list wraps around.
   function emojiPickerHtml(id) {
-    return `<div class="emoji-pick" role="group" aria-label="Your icon">
-      <button type="button" class="emoji-nav" data-action="emoji-prev" aria-label="Previous icon">&lsaquo;</button>
-      <button type="button" class="emoji-cur" id="${id}" data-action="emoji-next" data-emoji-current aria-label="Your icon. Tap for the next one.">${esc(app.emoji)}</button>
-      <button type="button" class="emoji-nav" data-action="emoji-next" aria-label="Next icon">&rsaquo;</button>
-    </div>`;
+    return `<button type="button" class="emoji-pick emoji-cur" id="${id}" data-action="emoji-next" data-emoji-current title="Tap to change your icon" aria-label="Your icon. Tap to change it.">${esc(
+      app.emoji,
+    )}</button>`;
   }
 
   // ----------------------------------------------------------- fragments
@@ -941,11 +947,9 @@
         app.drawerOpen = !app.drawerOpen;
         renderDrawer(s);
         return;
-      case 'emoji-prev':
       case 'emoji-next': {
         const i = Math.max(0, EMOJIS.indexOf(app.emoji));
-        const step = action === 'emoji-next' ? 1 : -1;
-        app.emoji = EMOJIS[(i + step + EMOJIS.length) % EMOJIS.length];
+        app.emoji = EMOJIS[(i + 1) % EMOJIS.length];
         store.set('jev:emoji', app.emoji);
         document.querySelectorAll('[data-emoji-current]').forEach((el) => (el.textContent = app.emoji));
         if (app.screen === 'room') {

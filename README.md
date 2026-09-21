@@ -39,13 +39,14 @@ Live: https://jev-stories.jev-stories.workers.dev
 
 | Room | Jev filters |
 | --- | --- |
-| Everyone (E) | any violence beyond slapstick, any sexual reference, any swearing, hate and harassment |
-| Teen (T) | graphic violence, explicit sexual content, strong profanity, hate and harassment |
-| Mature (M) | pornographic description, hate and harassment |
-| Adult (A) | hate and harassment |
+| Safe for Everyone | any violence beyond slapstick, any sexual reference, any swearing |
+| Moderated for Teens | graphic violence, explicit sexual content, strong profanity |
+| Mature Audience Only | pornographic description |
+| Absolute Degenerates | nothing extra |
 
-A filtered line cannot win. Its author sees why; nobody else sees the line.
-The presets live in `src/rules.js` (`RATINGS`).
+Hate and harassment are filtered out in every room. A filtered line cannot
+win. Its author sees why; nobody else sees the line. The presets live in
+`src/rules.js` (`RATINGS`).
 
 ## How Jev judges a round
 
@@ -85,7 +86,7 @@ tests/               node --test suites
 
 ## Settings
 
-Settings are fixed per deployment, not per room or host. Defaults: 90 s to
+Settings are fixed per deployment, not per room or host. Defaults: 60 s to
 write a line (cap 120), 60 s to set a theme, 30 s reveal, 30 s story-end
 screen, 280 characters per line, 100 players per room. Override with `[vars]`
 in `wrangler.toml` (see the comments there) and redeploy.

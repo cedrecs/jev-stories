@@ -118,7 +118,7 @@ const HATE = {
 export const RATINGS = {
   E: {
     code: 'E',
-    label: 'Everyone',
+    label: 'Safe for Everyone',
     slug: 'everyone',
     tagline: 'Clean fun for all ages',
     filters: [
@@ -154,7 +154,7 @@ export const RATINGS = {
   },
   T: {
     code: 'T',
-    label: 'Teen',
+    label: 'Moderated for Teens',
     slug: 'teen',
     tagline: 'Mild language and cartoon mayhem are fine',
     filters: [
@@ -190,7 +190,7 @@ export const RATINGS = {
   },
   M: {
     code: 'M',
-    label: 'Mature',
+    label: 'Mature Audience Only',
     slug: 'mature',
     tagline: 'Strong language and adult humor allowed',
     filters: [
@@ -208,9 +208,9 @@ export const RATINGS = {
   },
   A: {
     code: 'A',
-    label: 'Adult',
+    label: 'Absolute Degenerates',
     slug: 'adult',
-    tagline: 'Anything goes, except hate and harassment',
+    tagline: 'Anything goes',
     filters: [HATE],
   },
 };
@@ -222,7 +222,7 @@ export function ratingFromSlug(slug) {
 export const MODERATION_THRESHOLD = 0.5;
 
 export const DEFAULT_SETTINGS = {
-  writingSeconds: 90,
+  writingSeconds: 60,
   themeSeconds: 60,
   revealSeconds: 30,
   storyEndSeconds: 30,

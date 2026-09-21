@@ -236,6 +236,22 @@ test('mockAnswers returns well-formed answers for every question and flags mock 
   assert.equal(scored.ranked.find((r) => r.id === 'D').filtered, true);
 });
 
+test('default timings: 60 s to set a theme or write a line, 30 s for the reveal and the story end', () => {
+  const s = settingsFromEnv({});
+  assert.equal(s.themeSeconds, 60);
+  assert.equal(s.writingSeconds, 60);
+  assert.equal(s.revealSeconds, 30);
+  assert.equal(s.storyEndSeconds, 30);
+});
+
+test('room names', () => {
+  assert.deepEqual(
+    ['E', 'T', 'M', 'A'].map((c) => RATINGS[c].label),
+    ['Safe for Everyone', 'Moderated for Teens', 'Mature Audience Only', 'Absolute Degenerates'],
+  );
+  assert.ok(Object.values(RATINGS).every((r) => r.filters.some((f) => f.key === 'hateful')), 'hate is filtered in every room');
+});
+
 test('pickEmoji accepts only listed icons and falls back by join order', () => {
   assert.equal(EMOJIS.length, 32);
   assert.equal(new Set(EMOJIS).size, 32, 'no duplicates');
