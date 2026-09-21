@@ -265,6 +265,20 @@ export class Room extends DurableObject {
         return;
       }
 
+      case 'end-story': {
+        if (!r.story || player.id !== r.story.setterId) throw new Error('Only the theme setter can end the story.');
+        if (r.phase === 'reveal') {
+          await this.finishReveal({ endNow: true });
+        } else if (r.phase === 'writing') {
+          // The tap raced the reveal timer into the next round: end it anyway,
+          // leaving out the lines not yet judged.
+          await this.endStory('setter');
+        } else {
+          throw new Error('The story can be ended once a round has been revealed.');
+        }
+        return;
+      }
+
       default:
         throw new Error(`Unknown message type: ${msg.type}`);
     }
@@ -641,8 +655,9 @@ export class Room extends DurableObject {
     await this.commit();
   }
 
-  // Ends the reveal (timer or setter skip): taps become feedback, then move on.
-  async finishReveal() {
+  // Ends the reveal (timer, setter skip, or the setter ending the story):
+  // taps become feedback, then the game moves on.
+  async finishReveal({ endNow = false } = {}) {
     const r = this.room;
     if (r.phase !== 'reveal') return;
     const res = r.results;
@@ -652,6 +667,11 @@ export class Room extends DurableObject {
       r.feedback.rounds += 1;
       r.feedback.taps += learn.taps;
       r.feedback.agreements += learn.agreements;
+    }
+    if (endNow) {
+      // If Jev had already decided this line ends the story, keep Jev's reason.
+      await this.endStory(res && res.ends ? res.endReason || 'jev' : 'setter');
+      return;
     }
     await this.afterReveal();
   }
@@ -672,9 +692,9 @@ export class Room extends DurableObject {
 
   async endStory(reason) {
     const r = this.room;
-    r.lastStory = r.story
-      ? { ...r.story, endedAt: now(), endReason: reason, endText: END_REASON_TEXT[reason] || 'The story ended.' }
-      : null;
+    const setterNick = r.story ? r.players[r.story.setterId]?.nick || r.story.setterNick : '';
+    const endText = reason === 'setter' ? `${setterNick} ended the story.` : END_REASON_TEXT[reason] || 'The story ended.';
+    r.lastStory = r.story ? { ...r.story, endedAt: now(), endReason: reason, endText } : null;
     r.story = null;
     r.round = null;
     r.results = null;

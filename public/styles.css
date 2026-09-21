@@ -230,6 +230,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .step { display: block; font-weight: 600; font-size: 0.95rem; color: var(--text); }
 .stack > .step-gap { margin-top: 18px; }
 .room-note { margin-top: 10px; }
+.setter-actions { gap: 8px; flex-wrap: nowrap; }
 
 /* ---------- story score ---------- */
 .verdict { margin-top: 14px; padding: 12px 14px; background: var(--bg-2); border: 1px solid var(--jev); border-radius: var(--radius-s); }

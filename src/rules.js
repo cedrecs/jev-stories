@@ -3,7 +3,7 @@
 
 // Bump when the snapshot or message protocol changes: clients that see a
 // different version in a snapshot reload themselves to pick up new code.
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 // Player icons. Stored as code points so the source stays plain ASCII; the
 // client carries the same list. A player may pick any of them, repeats allowed.

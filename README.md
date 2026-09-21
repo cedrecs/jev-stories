@@ -26,7 +26,8 @@ Live: https://jev-stories.jev-stories.workers.dev
    or clear the pick by tapping it again; only the last pick counts when the
    window closes. Picks never change the outcome; they nudge the room's
    default sliders toward what its players enjoy, and the Scores drawer shows
-   how often players agreed with Jev. The setter can skip ahead.
+   how often players agreed with Jev. The setter can skip ahead, or end the
+   story right there after confirming; Jev then scores it as usual.
 7. Jev also judges whether the story feels finished. Once past its minimum
    length, a winning line that reads like an ending closes the story; the
    maximum length is a hard stop. Jev then scores the finished story out of

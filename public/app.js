@@ -69,6 +69,7 @@
   const drawer = $('#drawer');
   const toastEl = $('#toast');
   const leaveDialog = $('#leave-dialog');
+  const endDialog = $('#end-dialog');
 
   const esc = (v) =>
     String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -320,6 +321,7 @@
     }
     Object.assign(app, { screen: 'home', state: null, me: null, token: null, code: null, drawerOpen: false, connLost: false });
     history.replaceState(null, '', '/');
+    if (endDialog.open) endDialog.close();
     render();
     refreshRooms();
   }
@@ -380,6 +382,8 @@
       )}…</p>${app.retries > 4 ? '<button class="btn" data-action="retry">Try again</button>' : ''}</section>`;
       return;
     }
+    // A confirmation left open after the reveal has moved on no longer applies.
+    if (endDialog.open && (s.phase !== 'reveal' || !s.story || s.story.setterId !== s.youId)) endDialog.close();
     const me = s.players.find((p) => p.id === s.youId) || null;
     const connected = s.players.filter((p) => p.connected).length;
     $('#tb-count').textContent = `${connected} ${connected === 1 ? 'player' : 'players'}`;
@@ -693,6 +697,8 @@
     const mine = filtered.find((f) => f.authorId === s.youId);
     const hasWinner = Boolean(res.winnerId);
     const isSetter = s.story && s.story.setterId === s.youId;
+    // The setter may end the story once it has a line, unless Jev is already ending it.
+    const canEnd = Boolean(s.story && s.story.sentences.length > 0 && !res.ends);
     let next;
     if (!hasWinner) next = `Trying again in <span class="timer inline" data-deadline="${s.deadline}"></span>`;
     else if (res.ends) next = `The story is complete. Reading it in <span class="timer inline" data-deadline="${s.deadline}"></span>`;
@@ -701,7 +707,11 @@
     return `
       <section class="card">
         <div class="row between"><h2>${hasWinner ? 'Jev has spoken' : 'No winner this round'}</h2>${
-          isSetter ? '<button class="btn small" data-action="skip">Skip ahead</button>' : ''
+          isSetter
+            ? `<div class="row setter-actions">${
+                canEnd ? '<button class="btn small ghost" data-action="ask-end-story">End the story</button>' : ''
+              }<button class="btn small" data-action="skip">Skip ahead</button></div>`
+            : ''
         }</div>
         ${res.error ? `<p class="error">${esc(res.error)}</p>` : ''}
         ${
@@ -1057,6 +1067,16 @@
       case 'confirm-leave':
         leaveDialog.close();
         leaveRoom();
+        return;
+      case 'ask-end-story':
+        endDialog.showModal();
+        return;
+      case 'cancel-end':
+        endDialog.close();
+        return;
+      case 'confirm-end':
+        endDialog.close();
+        send({ type: 'end-story' });
         return;
       case 'pick-len': {
         app.lenDraft = btn.dataset.len;

@@ -58,6 +58,17 @@
     </form>
   </dialog>
 
+  <dialog id="end-dialog">
+    <form method="dialog" class="dialog-body">
+      <h2>End the story?</h2>
+      <p>The story ends now for everyone, and Jev scores it.</p>
+      <div class="row end">
+        <button class="btn" type="button" data-action="cancel-end">Keep going</button>
+        <button class="btn primary" type="button" data-action="confirm-end">End the story</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="/app.js"></script>
 </body>
