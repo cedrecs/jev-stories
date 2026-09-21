@@ -100,7 +100,7 @@ in `wrangler.toml` (see the comments there) and redeploy.
 
 ## Deploy to Cloudflare
 
-The live game runs on Cloudflare's Workers Paid plan, $5 a month. The free
+The live game runs on Cloudflare's Workers Paid plan. The free
 plan is fine for trying it out, but its daily limits are too tight for busy
 rooms: every player action is a Durable Object storage write, the free plan
 allows 100,000 writes a day, and once they run out rooms stop saving until the
