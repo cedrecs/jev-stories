@@ -918,10 +918,11 @@
     const setterId = s.story ? s.story.setterId : null;
     // The mix Jev uses right now: this story's sliders, else the room defaults.
     const weights = s.story && s.story.weights ? s.story.weights : s.learned;
+    // Under the pie, say who set this story's mix. No note for the room defaults.
     const note = s.story
-      ? `Set by ${av(s.story.setterEmoji)}${esc(s.story.setterNick)} for this round.`
-      : "The room's defaults, shaped by players' picks.";
-    $('#drawer-jev').innerHTML = `${pieHtml(weights)}<p class="muted small pie-note">${note}</p>`;
+      ? `<p class="muted small pie-note">Set by ${av(s.story.setterEmoji)}${esc(s.story.setterNick)} for this round.</p>`
+      : '';
+    $('#drawer-jev').innerHTML = pieHtml(weights) + note;
     // Your own row first, then everyone else from highest score to lowest.
     const me = s.players.find((p) => p.id === s.youId);
     const others = s.players.filter((p) => p.id !== s.youId).sort((a, b) => b.score - a.score || (a.joinedAt || 0) - (b.joinedAt || 0));
