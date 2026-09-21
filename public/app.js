@@ -388,7 +388,7 @@
     const connected = s.players.filter((p) => p.connected).length;
     $('#tb-count').textContent = `${connected} ${connected === 1 ? 'player' : 'players'}`;
     $('#tb-story').textContent =
-      s.story && s.story.theme ? `Story #${s.story.index}: ${s.story.theme}` : s.story ? `Story #${s.story.index}` : '';
+      s.story && s.story.theme ? s.story.theme : '';
 
     const key = [
       s.phase,
@@ -590,7 +590,7 @@
         <section class="card">
           <div class="row between"><h2>You set the stage</h2><div class="timer" data-deadline="${s.deadline}"></div></div>
           <div class="bar" data-bar="${s.deadline}" data-total="${total}"><i></i></div>
-          <p class="muted small" style="margin-top:10px">Story #${st.index}. Give everyone a theme, pick a length, and tune what Jev rewards. If time runs out, the next player takes over.</p>
+          <p class="muted small" style="margin-top:10px">Provide a theme for this story. Pick its length and tune how Jev judges responses.</p>
           <label><span class="lbl">Theme</span><input id="theme" maxlength="80" autocomplete="off" placeholder="e.g. A heist pulled off by grandmothers" value="${esc(
             app.themeDraft,
           )}"></label>
@@ -607,7 +607,6 @@
     }
     return `
       <section class="card center">
-        <div class="label">Story #${st.index}</div>
         <h2>${av(st.setterEmoji)}${esc(st.setterNick)} is choosing a theme</h2>
         <div class="timer" style="text-align:center" data-deadline="${s.deadline}"></div>
         <p class="muted">Get your typing fingers ready.</p>
@@ -627,7 +626,7 @@
         <div class="row between"><h2>Line ${s.round.index}</h2><div class="timer" data-deadline="${s.deadline}"></div></div>
         <div class="bar" data-bar="${s.deadline}" data-total="${total}"><i></i></div>
         ${replay}
-        <textarea id="sentence" maxlength="${s.settings.maxSentenceChars}" rows="3" placeholder="${
+        <textarea id="sentence" maxlength="${s.settings.maxSentenceChars}" rows="3" enterkeyhint="send" placeholder="${
           st.sentences.length ? 'Write the next sentence…' : 'Write the opening line…'
         }" style="margin-top:10px"></textarea>
         <div class="row between" style="margin-top:8px">
@@ -777,7 +776,7 @@
     const len = LENGTHS[st.length] || LENGTHS.medium;
     return `
       <section class="card story-final">
-        <div class="label">Story #${st.index} · ${len.label} · theme by ${av(st.setterEmoji)}${esc(st.setterNick)}</div>
+        <div class="label">${len.label} · theme by ${av(st.setterEmoji)}${esc(st.setterNick)}</div>
         <h2>${esc(st.theme)}</h2>
         <ol class="story final">${st.sentences
           .map((x, i) => `<li data-n="${i + 1}">${esc(x.text)}<span class="by">${av(x.authorEmoji)}${esc(x.authorNick)}</span></li>`)
@@ -1132,7 +1131,8 @@
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
+    // Enter while an input method is still composing a character is not a submit.
+    if (e.key !== 'Enter' || e.isComposing) return;
     const t = e.target;
     if (t.matches && t.matches('[data-action="tap"]')) {
       e.preventDefault();
@@ -1140,7 +1140,8 @@
     } else if (t.id === 'theme') {
       e.preventDefault();
       handleAction('set-theme');
-    } else if (t.id === 'sentence' && (e.ctrlKey || e.metaKey)) {
+    } else if (t.id === 'sentence' && !e.shiftKey) {
+      // Enter is the same as tapping Submit.
       e.preventDefault();
       handleAction('submit');
     }
