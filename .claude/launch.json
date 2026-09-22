@@ -2,13 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "jev-stories-dev",
+      "name": "jev-yarn-dev",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["wrangler", "dev", "--port", "8787"],
       "port": 8787
     },
     {
-      "name": "jev-stories-slow",
+      "name": "jev-yarn-slow",
       "runtimeExecutable": "npx",
       "runtimeArgs": [
         "wrangler", "dev", "--port", "8788", "--inspector-port", "9331",

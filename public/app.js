@@ -1,4 +1,4 @@
-/* Jev Stories client. One file, no framework. The server owns all game
+/* Jev Yarn client. One file, no framework. The server owns all game
    state; this file renders snapshots and sends intents. */
 (() => {
   'use strict';
@@ -511,7 +511,7 @@
     const savedNick = store.get('jev:nick') || '';
     screenEl.innerHTML = `
       <section class="hero">
-        <h1>Jev Stories</h1>
+        <h1>Jev Yarn</h1>
         <img class="logo" src="/icons/icon-512.png" alt="" width="128" height="128">
         <p class="tagline">Everyone writes the next line. Jev picks the winner.</p>
       </section>
@@ -828,7 +828,7 @@
     const js = st.jevScore;
     const score =
       js && js.dims ? `Jev's score: ${js.overall}/100 (${DIMS.map((d) => `${d.label} ${pct(js.dims[d.key].value)}`).join(', ')})\n` : '';
-    return `${st.theme}\nA Jev Stories tale, ${len.label.toLowerCase()} length, theme by ${who(st.setterEmoji, st.setterNick)}\n\n${lines.join(
+    return `${st.theme}\nA Jev Yarn tale,${len.label.toLowerCase()} length, theme by ${who(st.setterEmoji, st.setterNick)}\n\n${lines.join(
       '\n',
     )}\n\n${st.endText || ''}\n${score}`;
   }

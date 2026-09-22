@@ -1,4 +1,4 @@
-# Jev Stories
+# Jev Yarn
 
 A party game inspired by Y.A.R.N.: everyone writes the next line of a shared
 story, and instead of a vote, **TypeSafe's Jev** picks the winner. Installable

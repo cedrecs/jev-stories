@@ -1,5 +1,5 @@
 {
-  "name": "jev-stories",
+  "name": "jev-yarn",
   "version": "0.1.0",
   "description": "Y.A.R.N.-inspired collaborative story party game where TypeSafe's Jev picks the winning sentence",
   "private": true,
@@ -15,10 +15,10 @@
   "homepage": "https://jev-stories.jev-stories.workers.dev",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cedrecs/jev-stories.git"
+    "url": "git+https://github.com/cedrecs/jev-yarn.git"
   },
   "bugs": {
-    "url": "https://github.com/cedrecs/jev-stories/issues"
+    "url": "https://github.com/cedrecs/jev-yarn/issues"
   },
   "devDependencies": {
     "@discord/embedded-app-sdk": "2.5.0",

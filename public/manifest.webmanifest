@@ -1,6 +1,6 @@
 {
-  "name": "Jev Stories",
-  "short_name": "Jev Stories",
+  "name": "Jev Yarn",
+  "short_name": "Jev Yarn",
   "description": "Write the next line of a shared story. Jev picks the winner.",
   "id": "/",
   "start_url": "/",
