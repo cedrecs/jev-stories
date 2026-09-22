@@ -12,7 +12,7 @@
     "discord-sdk": "node scripts/build-discord-sdk.mjs"
   },
   "license": "MIT",
-  "homepage": "https://jev-stories.jev-stories.workers.dev",
+  "homepage": "https://jev-yarn.jevie.app",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cedrecs/jev-yarn.git"

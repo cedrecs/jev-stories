@@ -2,6 +2,13 @@ name = "jev-stories"
 main = "src/index.js"
 compatibility_date = "2026-08-01"
 
+# The game's address is its own domain, a Workers Custom Domain (Cloudflare
+# makes the DNS record and the certificate). The workers.dev address stays on
+# while players and the Discord app's URL mapping move over; setting routes
+# would otherwise switch it off.
+routes = [{ pattern = "jev-yarn.jevie.app", custom_domain = true }]
+workers_dev = true
+
 # Static PWA shell. Unknown paths (e.g. /r/ABCD invite links) fall back to index.html.
 [assets]
 directory = "./public"
@@ -41,3 +48,18 @@ DISCORD_CLIENT_ID = "1551812885666332682"
 # MAX_SENTENCE_CHARS = "280"  # 80 to 500
 # MAX_PLAYERS = "100"         # 2 to 100, per room
 # MOCK_JUDGE = "1"            # development only: fake judge when no key is set
+
+# The staging copy, safe to break: npx wrangler deploy --env staging. It keeps
+# its own workers.dev address and never claims the custom domain. Bindings and
+# vars do not carry over from the top level, so they are repeated here.
+[env.staging]
+name = "jev-stories-staging"
+routes = []
+workers_dev = true
+
+[env.staging.vars]
+DISCORD_CLIENT_ID = "1551812885666332682"
+
+[[env.staging.durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"

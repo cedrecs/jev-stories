@@ -4,7 +4,7 @@ A party game inspired by Y.A.R.N.: everyone writes the next line of a shared
 story, and instead of a vote, **TypeSafe's Jev** picks the winner. Installable
 as a PWA, runs on Cloudflare Workers with one Durable Object per room.
 
-Live: https://jev-stories.jev-stories.workers.dev
+Live: https://jev-yarn.jevie.app
 
 ## How a game plays
 
@@ -112,7 +112,7 @@ own private set of the four rooms; the website keeps its public rooms.
 Players type a nickname as they do on the web.
 
 Setup: create an app in the Discord Developer Portal, enable Activities, map
-the prefix `/` to the Worker's host (`jev-stories.jev-stories.workers.dev`),
+the prefix `/` to the game's host (`jev-yarn.jevie.app`),
 allow User and Guild install, and put the app's Application ID in
 `DISCORD_CLIENT_ID` in `wrangler.toml`. The ID is public, not a secret. The
 Worker then accepts room connections from `<id>.discordsays.com`, and only
@@ -159,6 +159,12 @@ npx wrangler secret bulk .dev.vars   # uploads TYPESAFE_API_KEY from the local f
 which is more reliable on some Windows setups. `secret bulk` reads the key
 from `.dev.vars` so nothing is pasted or echoed.
 Re-run `npm run deploy` after code changes; the secret stays.
+
+The live game answers on its own domain, set as a Workers Custom Domain in
+`routes` in `wrangler.toml`; Cloudflare makes its DNS record and certificate.
+A staging copy lives in the `[env.staging]` section of the same file and
+deploys with `npx wrangler deploy --env staging`, to its own workers.dev
+address and never to the custom domain.
 
 On the very first deploy the `workers.dev` subdomain is new and its TLS
 certificate takes a few minutes to issue. Until then browsers show a
