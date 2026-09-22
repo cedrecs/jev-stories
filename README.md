@@ -91,9 +91,9 @@ src/judge.js         TypeSafe request builder, scoring, transport, mock
 src/rules.js         Rooms, dimensions, filters, learning rule, validation
 src/headers.js       Security headers and the Content-Security-Policy
 src/preview.js       Link previews: absolute URLs and a card per room
-public/              PWA: index.html, app.js, styles.css, sw.js, manifest, icons
+public/              PWA: index.html, app.js, styles.css, sw.js, manifest, icons, fonts, vendor
 assets/              logo-source.png, the master logo every icon and the preview image come from
-scripts/             make-icons.mjs (icons), load-test.mjs (synthetic players)
+scripts/             make-icons.mjs (icons), build-discord-sdk.mjs (Discord SDK bundle), load-test.mjs (synthetic players)
 tests/               node --test suites
 ```
 
@@ -104,12 +104,32 @@ write a line (cap 120), 90 s to set a theme, 30 s reveal, 30 s story-end
 screen, 280 characters per line, 100 players per room. Override with `[vars]`
 in `wrangler.toml` (see the comments there) and redeploy.
 
+## Discord
+
+The game also runs inside Discord as an Activity, from the App Launcher in a
+server channel or group chat. There each call (Activity instance) gets its
+own private set of the four rooms; the website keeps its public rooms.
+Players type a nickname as they do on the web.
+
+Setup: create an app in the Discord Developer Portal, enable Activities, map
+the prefix `/` to the Worker's host (`jev-stories.jev-stories.workers.dev`),
+allow User and Guild install, and put the app's Application ID in
+`DISCORD_CLIENT_ID` in `wrangler.toml`. The ID is public, not a secret. The
+Worker then accepts room connections from `<id>.discordsays.com`, and only
+Discord may show the game in a frame.
+
+`public/vendor/discord-sdk.js` is Discord's Embedded App SDK bundled with the
+packages it uses (`npm run discord-sdk` rebuilds it; the licences sit next to
+it). The page loads it only inside Discord. The two fonts are served from
+`public/fonts` (SIL Open Font License), because Discord blocks outside font
+hosts.
+
 ## Limits and headers
 
 Each connection holds one seat, may send messages of up to 8 KB at up to
 three a second (bursts of 30), and is closed if it keeps flooding. One network
 address may hold 25 connections to a room. Room connections are accepted only
-from the site's own pages. Every response carries a Content-Security-Policy
+from the site's own pages and its Discord Activity. Every response carries a Content-Security-Policy
 and the usual security headers (`src/headers.js`). The room list is cached for
 two seconds. A round Jev never answered, after a restart mid-judge, is judged
 again after 90 seconds.

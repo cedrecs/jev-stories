@@ -64,6 +64,13 @@
     0x1f431, 0x1f436, 0x1f980, 0x1f986, 0x1f994, 0x1f47b, 0x1f916, 0x1f47d,
   ].map((c) => String.fromCodePoint(c));
 
+  // Inside Discord the game runs as an Activity. Discord puts frame_id and
+  // instance_id in the page address, and everyone in the same call shares the
+  // instance, which gets its own private set of rooms.
+  const launch = new URLSearchParams(location.search);
+  const DISCORD = launch.has('frame_id') && launch.has('instance_id');
+  const discord = { instanceId: DISCORD ? launch.get('instance_id') : null, sdk: null };
+
   const $ = (sel, root = document) => root.querySelector(sel);
   const screenEl = $('#screen');
   const topbar = $('#topbar');
@@ -121,7 +128,12 @@
       }
     },
   };
-  const identityKey = (code) => `jev:room:${code}`;
+  // Seats are remembered per room, and inside Discord per call as well.
+  const roomKey = (code) => (DISCORD ? `${discord.instanceId}:${code}` : code);
+  const identityKey = (code) => `jev:room:${roomKey(code)}`;
+  const lastRoomKey = () => (DISCORD ? `jev:lastRoom:${discord.instanceId}` : 'jev:lastRoom');
+  // Inside Discord every request names the call, whose private rooms it wants.
+  const instanceQuery = () => (DISCORD ? `?instance=${encodeURIComponent(discord.instanceId)}` : '');
   function loadIdentity(code) {
     try {
       return JSON.parse(store.get(identityKey(code)) || 'null');
@@ -197,7 +209,7 @@
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     let ws;
     try {
-      ws = new WebSocket(`${proto}://${location.host}/ws/${app.code}`);
+      ws = new WebSocket(`${proto}://${location.host}/ws/${app.code}${instanceQuery()}`);
     } catch {
       scheduleReconnect();
       return;
@@ -302,7 +314,7 @@
         app.retries = 0;
         app.connLost = false;
         saveIdentity(app.code, { token: msg.token, nick: msg.nick });
-        store.set('jev:lastRoom', app.code);
+        store.set(lastRoomKey(), app.code);
         // The server starts every connection as present; say so if this page is hidden.
         app.sentAway = false;
         reportAway();
@@ -354,7 +366,8 @@
       drawerOpen: false,
     });
     clearInterval(app.roomsTimer);
-    history.replaceState(null, '', `/${room.slug}`);
+    // Inside Discord the address carries Discord's launch details: keep it.
+    if (!DISCORD) history.replaceState(null, '', `/${room.slug}`);
     openSocket();
     render();
   }
@@ -376,10 +389,10 @@
     }
     if (clearIdentity && app.code) {
       store.del(identityKey(app.code));
-      if (store.get('jev:lastRoom') === app.code) store.del('jev:lastRoom');
+      if (store.get(lastRoomKey()) === app.code) store.del(lastRoomKey());
     }
     Object.assign(app, { screen: 'home', state: null, me: null, token: null, code: null, drawerOpen: false, connLost: false });
-    history.replaceState(null, '', '/');
+    if (!DISCORD) history.replaceState(null, '', '/');
     if (endDialog.open) endDialog.close();
     render();
     refreshRooms();
@@ -396,7 +409,7 @@
     clearInterval(app.roomsTimer);
     if (app.screen !== 'home') return;
     try {
-      const res = await fetch('/api/rooms', { cache: 'no-store' });
+      const res = await fetch(`/api/rooms${instanceQuery()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data && Array.isArray(data.rooms) && data.rooms.length) {
@@ -637,7 +650,7 @@
       <section class="card center">
         <h2>Waiting for players</h2>
         <p class="muted">The game starts as soon as two or more people are in the room.</p>
-        <button class="btn primary" data-action="copy-link">Copy invite link</button>
+        ${DISCORD ? '' : '<button class="btn primary" data-action="copy-link">Copy invite link</button>'}
         <div style="margin-top:16px" data-players>${playersHtml(s)}</div>
       </section>
       ${scoreboardCardHtml(s)}`;
@@ -1233,11 +1246,34 @@
     if (t.matches('[data-dim]')) send({ type: 'weights', weights: readSliders(t.closest('[data-sliders]')) });
   });
 
-  if ('serviceWorker' in navigator) {
+  // Discord keeps its own copy of the page, so there is no offline shell there.
+  if ('serviceWorker' in navigator && !DISCORD) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
   }
 
+  // Discord's handshake. Its SDK is loaded only inside Discord, where the page
+  // address names the app: <application id>.discordsays.com. A local run with
+  // Discord's parameters but another address skips it.
+  async function startDiscord() {
+    const clientId = location.hostname.split('.')[0];
+    if (!/^\d+$/.test(clientId)) return;
+    try {
+      const { DiscordSDK } = await import('/vendor/discord-sdk.js');
+      discord.sdk = new DiscordSDK(clientId);
+      await discord.sdk.ready();
+    } catch (err) {
+      console.error('Discord handshake failed', err);
+    }
+  }
+
   // ------------------------------------------------------------------ boot
+  if (DISCORD) {
+    startDiscord();
+    // Invites happen in Discord itself: the room name is not a link to copy.
+    const pill = $('.tb-code');
+    pill.removeAttribute('data-action');
+    pill.removeAttribute('title');
+  }
   app.emoji = (() => {
     const saved = store.get('jev:emoji');
     if (saved && EMOJIS.includes(saved)) return saved;
@@ -1245,7 +1281,10 @@
     store.set('jev:emoji', pick);
     return pick;
   })();
-  const urlCode = codeFromUrl();
+  // The room to go back to: the one in the address, or inside Discord (where
+  // the address stays Discord's) the last one joined in this call.
+  const lastCode = DISCORD ? store.get(lastRoomKey()) : null;
+  const urlCode = DISCORD ? (roomByCode(lastCode) ? lastCode : null) : codeFromUrl();
   const cached = urlCode ? loadIdentity(urlCode) : null;
   if (urlCode && cached && cached.token) {
     // A refresh mid-game goes straight back to the seat.

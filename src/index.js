@@ -5,11 +5,13 @@
 // There are four fixed rooms: Safe for Everyone, Moderated for Teens, Mature
 // Audience Only and Absolute Degenerates, keyed internally by the codes E, T,
 // M and A. A room's Durable Object is created on first contact and lives on
-// from then.
+// from then. Inside Discord, where the game runs as an Activity, each call
+// (Activity instance) gets its own private set of the same four rooms: the
+// page adds ?instance=<id> to its requests.
 
 import { Room } from './room.js';
-import { RATINGS, RATING_CODES } from './rules.js';
-import { securityHeaders, withHeaders } from './headers.js';
+import { RATINGS, RATING_CODES, isInstanceId, roomObjectName } from './rules.js';
+import { securityHeaders, allowedOrigins, withHeaders } from './headers.js';
 import { withPreview } from './preview.js';
 
 export { Room };
@@ -27,8 +29,14 @@ function json(data, status = 200) {
   });
 }
 
-function roomStub(env, code) {
-  return env.ROOM.get(env.ROOM.idFromName(`rating:${code}`));
+function roomStub(env, code, instance = null) {
+  return env.ROOM.get(env.ROOM.idFromName(roomObjectName(code, instance)));
+}
+
+// The four rooms of one Discord call, with who is in each.
+async function instanceRoomList(env, instance) {
+  const infos = await Promise.all(RATING_CODES.map((code) => roomStub(env, code, instance).info()));
+  return RATING_CODES.map((code, i) => publicRoom(code, infos[i]));
 }
 
 function publicRoom(code, info) {
@@ -70,6 +78,11 @@ async function route(request, env, url) {
   }
 
   if (path === '/api/rooms' && request.method === 'GET') {
+    const instance = url.searchParams.get('instance');
+    if (instance !== null) {
+      if (!isInstanceId(instance)) return json({ error: 'No such call' }, 400);
+      return json({ rooms: await instanceRoomList(env, instance) });
+    }
     return json({ rooms: await roomList(env) });
   }
 
@@ -88,13 +101,15 @@ async function route(request, env, url) {
     if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response('Expected a WebSocket upgrade', { status: 426 });
     }
-    // A browser always sends the page's origin: only this site's own pages
-    // may open a room connection, so another website cannot play through a
-    // visitor's browser.
+    // A browser always sends the page's origin: only this site's own pages,
+    // and the game inside Discord, may open a room connection, so another
+    // website cannot play through a visitor's browser.
     const origin = request.headers.get('Origin');
-    if (origin && origin !== url.origin) return new Response('Forbidden', { status: 403 });
-    const stub = roomStub(env, code);
-    await stub.create(code);
+    if (origin && !allowedOrigins(url, env.DISCORD_CLIENT_ID).includes(origin)) return new Response('Forbidden', { status: 403 });
+    const instance = url.searchParams.get('instance');
+    if (instance !== null && !isInstanceId(instance)) return new Response('No such call', { status: 400 });
+    const stub = roomStub(env, code, instance);
+    await stub.create(code, instance ? 'discord' : 'public');
     return stub.fetch(request);
   }
 

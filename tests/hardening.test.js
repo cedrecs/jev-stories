@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanText, normalizeLength, RateLimiter, ipKey, LENGTHS, RATINGS, DIMENSIONS, normalizeWeights } from '../src/rules.js';
+import { cleanText, normalizeLength, RateLimiter, ipKey, LENGTHS, RATINGS, DIMENSIONS, normalizeWeights, isInstanceId, roomObjectName } from '../src/rules.js';
 import { scoreResults, UNCHECKED, buildTextCheckRequest, checkText } from '../src/judge.js';
-import { securityHeaders, withHeaders } from '../src/headers.js';
+import { securityHeaders, allowedOrigins, withHeaders } from '../src/headers.js';
 import { linkPreview } from '../src/preview.js';
 
 test('cleanText strips invisible and bidirectional characters and counts code points', () => {
@@ -101,26 +101,41 @@ test('nickname and theme checks ask one Noul per room filter, and the mock judge
   assert.deepEqual(degenerate.flags, [], 'Absolute Degenerates checks nothing, so no judge is needed');
 });
 
-test('security headers: a strict policy, the room socket on this host, HSTS only over HTTPS', () => {
+test('security headers: a strict policy, the room socket on this host, framing by Discord only, HSTS only over HTTPS', () => {
   const live = securityHeaders(new URL('https://jev-stories.jev-stories.workers.dev/safe-for-everyone'));
   const csp = live['Content-Security-Policy'];
   assert.match(csp, /default-src 'self'/);
   assert.match(csp, /script-src 'self';/);
-  assert.match(csp, /frame-ancestors 'none'/);
+  assert.match(csp, /frame-ancestors https:\/\/discord\.com https:\/\/\*\.discord\.com https:\/\/\*\.discordsays\.com;/, 'only Discord may frame the page');
   assert.match(csp, /object-src 'none'/);
-  assert.match(csp, /font-src 'self' https:\/\/fonts\.gstatic\.com/);
-  assert.match(csp, /style-src-elem 'self' https:\/\/fonts\.googleapis\.com/);
-  assert.match(csp, /connect-src 'self' wss:\/\/jev-stories\.jev-stories\.workers\.dev ws:\/\/jev-stories\.jev-stories\.workers\.dev/);
+  assert.match(csp, /font-src 'self';/, 'fonts come from this site only');
+  assert.match(csp, /style-src-elem 'self';/);
+  assert.doesNotMatch(csp, /googleapis|gstatic/);
+  assert.match(csp, /connect-src 'self' wss:\/\/jev-stories\.jev-stories\.workers\.dev ws:\/\/jev-stories\.jev-stories\.workers\.dev wss:\/\/\*\.discordsays\.com;/);
   assert.equal(live['Strict-Transport-Security'], 'max-age=31536000');
   assert.equal(live['X-Content-Type-Options'], 'nosniff');
-  assert.equal(live['X-Frame-Options'], 'DENY');
+  assert.equal(live['X-Frame-Options'], undefined, 'it cannot name Discord, so frame-ancestors does the job');
   const local = securityHeaders(new URL('http://localhost:8787/'));
   assert.equal(local['Strict-Transport-Security'], undefined, 'local development runs on plain HTTP');
   assert.match(local['Content-Security-Policy'], /ws:\/\/localhost:8787/);
   const res = withHeaders(new Response('x', { status: 201, headers: { 'Content-Type': 'text/plain' } }), local);
   assert.equal(res.status, 201);
   assert.equal(res.headers.get('Content-Type'), 'text/plain', 'existing headers survive');
-  assert.equal(res.headers.get('X-Frame-Options'), 'DENY');
+  assert.equal(res.headers.get('X-Content-Type-Options'), 'nosniff');
+});
+
+test('Discord: room connections from the Activity address, and private rooms per call', () => {
+  const url = new URL('https://jev-stories.jev-stories.workers.dev/ws/E');
+  assert.deepEqual(allowedOrigins(url, ''), ['https://jev-stories.jev-stories.workers.dev'], 'no Discord app set up: this site only');
+  assert.deepEqual(allowedOrigins(url, '123456789012345678'), ['https://jev-stories.jev-stories.workers.dev', 'https://123456789012345678.discordsays.com']);
+  assert.deepEqual(allowedOrigins(url, 'evil.example/x'), ['https://jev-stories.jev-stories.workers.dev'], 'only a numeric id counts');
+  assert.equal(roomObjectName('E'), 'rating:E', 'the public rooms keep their saved state');
+  assert.equal(roomObjectName('A', 'i-1234-gc-5678'), 'discord:i-1234-gc-5678:A');
+  assert.equal(isInstanceId('i-1234567890123456789-gc-123-456'), true);
+  assert.equal(isInstanceId('../rating:E'), false);
+  assert.equal(isInstanceId(''), false);
+  assert.equal(isInstanceId('x'.repeat(129)), false);
+  assert.equal(isInstanceId(null), false);
 });
 
 test('link previews: the game card at the root, a card per room, absolute URLs', () => {

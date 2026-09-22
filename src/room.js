@@ -45,6 +45,7 @@ const RATE_LIMIT = { burst: 30, perSecond: 3 };
 const STRIKES_TO_CLOSE = 60;
 const MAX_SOCKETS_PER_ADDRESS = 25;
 const EMPTY_ROOM_SLEEP_MS = 60 * 60_000; // an hour after everyone is gone, clear the table
+const DISCORD_EMPTY_MS = 10 * 60_000; // a Discord call's room is deleted this long after it empties
 const MIN_RESUME_MS = 15_000; // when a paused phase resumes, give at least this long
 const BROADCAST_COALESCE_MS = 200; // bursts of updates are sent at most this often
 const ACTIVE_PHASES = new Set(['theme', 'writing', 'reveal', 'storyEnd']);
@@ -109,10 +110,13 @@ export class Room extends DurableObject {
 
   // ------------------------------------------------------------------ RPC
 
-  async create(code) {
+  // kind is 'public' for the four web rooms, 'discord' for a room private to
+  // one Discord call.
+  async create(code, kind = 'public') {
     if (!this.room) {
       this.room = {
         code,
+        kind: kind === 'discord' ? 'discord' : 'public',
         createdAt: now(),
         phase: 'paused',
         deadline: null,
@@ -989,8 +993,16 @@ export class Room extends DurableObject {
       }
     }
 
-    // Empty for an hour: clear the table but keep what the room has learned.
-    if (r.emptySince && Object.values(r.players).every((p) => !p.connected) && t - r.emptySince >= EMPTY_ROOM_SLEEP_MS) {
+    // Empty long enough: a public room clears the table but keeps what it has
+    // learned; a Discord call's room is deleted outright, since Discord never
+    // reuses an Activity instance.
+    if (r.emptySince && Object.values(r.players).every((p) => !p.connected) && t - r.emptySince >= this.emptyRoomMs()) {
+      if (r.kind === 'discord') {
+        await this.ctx.storage.deleteAlarm();
+        await this.ctx.storage.deleteAll();
+        this.room = null;
+        return;
+      }
       Object.assign(r, {
         players: {},
         story: null,
@@ -1039,6 +1051,11 @@ export class Room extends DurableObject {
     else await this.commit();
   }
 
+  // How long the room may sit empty before it is cleared.
+  emptyRoomMs() {
+    return this.room && this.room.kind === 'discord' ? DISCORD_EMPTY_MS : EMPTY_ROOM_SLEEP_MS;
+  }
+
   // The single alarm serves phase deadlines, grace expiries and room cleanup.
   async scheduleAlarm() {
     const r = this.room;
@@ -1049,7 +1066,7 @@ export class Room extends DurableObject {
     for (const p of Object.values(r.players)) {
       if (!p.connected) times.push(p.lastSeen + GRACE_MS);
     }
-    if (r.emptySince) times.push(r.emptySince + EMPTY_ROOM_SLEEP_MS);
+    if (r.emptySince) times.push(r.emptySince + this.emptyRoomMs());
     if (!times.length) {
       await this.ctx.storage.deleteAlarm();
       return;

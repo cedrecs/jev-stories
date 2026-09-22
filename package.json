@@ -8,7 +8,8 @@
     "dev": "wrangler dev --port 8787",
     "deploy": "wrangler deploy",
     "icons": "node scripts/make-icons.mjs",
-    "test": "node --test \"tests/**/*.test.js\""
+    "test": "node --test \"tests/**/*.test.js\"",
+    "discord-sdk": "node scripts/build-discord-sdk.mjs"
   },
   "license": "MIT",
   "homepage": "https://jev-stories.jev-stories.workers.dev",
@@ -20,6 +21,8 @@
     "url": "https://github.com/cedrecs/jev-stories/issues"
   },
   "devDependencies": {
+    "@discord/embedded-app-sdk": "2.5.0",
+    "esbuild": "0.28.2",
     "wrangler": "^4.136.1"
   }
 }

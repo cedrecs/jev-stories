@@ -1,5 +1,24 @@
 /* "Slime Lab" theme, dark only. Every color is a token here; tints mix a token
    with transparency (color-mix), so changing a token carries them along. */
+
+/* Bagel Fat One and Lexend, Latin only, served from this site (Discord blocks
+   outside font hosts). SIL Open Font License; the texts are in /fonts. Lexend
+   is one variable file covering every weight. */
+@font-face {
+  font-family: 'Bagel Fat One';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/bagel-fat-one-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lexend';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/lexend-latin.woff2') format('woff2');
+}
+
 :root {
   color-scheme: dark;
 

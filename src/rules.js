@@ -231,6 +231,19 @@ export const RATINGS = {
   },
 };
 export const RATING_CODES = Object.keys(RATINGS);
+
+// Inside Discord the rooms are private to the call: each Activity instance
+// gets its own set of the four rooms. This checks an instance id as Discord
+// passes it to the page.
+export function isInstanceId(id) {
+  return typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id);
+}
+
+// The name of a room's Durable Object: a public room by its rating code, a
+// Discord call's room by instance and rating code.
+export function roomObjectName(code, instance = null) {
+  return instance ? `discord:${instance}:${code}` : `rating:${code}`;
+}
 // Rooms are found by their link slug, or by an older slug kept as an alias so
 // links shared before the rename still open the same room.
 export function ratingFromSlug(slug) {
