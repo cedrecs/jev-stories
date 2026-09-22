@@ -18,6 +18,8 @@ import {
   cleanText,
   learnFromTaps,
   nextSetter,
+  holdsUpRound,
+  everyoneHasWritten,
   ratingFromSlug,
   RATINGS,
   DIMENSIONS,
@@ -75,9 +77,9 @@ test('buildRequests sends one taste request plus detail chunks of JUDGE_CHUNK_SI
 });
 
 test('a single candidate gets no taste request and no story text yet', () => {
-  const reqs = buildRequests({ theme: 'X', sentences: [], candidates: [cands[0]], filters: RATINGS.A.filters });
+  const reqs = buildRequests({ theme: 'X', sentences: [], candidates: [cands[0]], filters: RATINGS.M.filters });
   assert.equal(reqs.length, 1);
-  assert.deepEqual(Object.keys(reqs[0].questions), ['end_A', 'mod_hateful_A']);
+  assert.deepEqual(Object.keys(reqs[0].questions), ['end_A', 'mod_sexual_A', 'mod_hateful_A']);
   assert.match(reqs[0].state.story_so_far, /No sentences yet/);
 });
 
@@ -89,7 +91,7 @@ test('room filters produce one Noul per filter with the room wording', () => {
   const teen = buildDetailRequest({ theme: 'T', sentences: [], candidates: [cands[0]], filters: RATINGS.T.filters });
   assert.match(teen.questions.mod_profanity_A.instructions, /strong profanity/);
   const adult = buildDetailRequest({ theme: 'T', sentences: [], candidates: [cands[0]], filters: RATINGS.A.filters });
-  assert.deepEqual(Object.keys(adult.questions), ['end_A', 'mod_hateful_A']);
+  assert.deepEqual(Object.keys(adult.questions), ['end_A'], 'Absolute Degenerates asks no filter questions');
 });
 
 test('weights mix into shares that sum to one, and the top share wins', () => {
@@ -117,7 +119,7 @@ test('a filter that fires disqualifies the line and records which filter', () =>
   assert.deepEqual(rowA.flags, ['profanity']);
   assert.equal(res.winner.id, 'B');
 
-  // Absolute Degenerates only asks about hate, so the same answers do not filter A.
+  // Absolute Degenerates has no filters, so the same answers do not filter A.
   const adult = scoreResults({ answers: a, candidates: cands, weights: normalizeWeights({}), storyLength: 1, length: 'medium', filters: RATINGS.A.filters });
   assert.equal(adult.winner.id, 'A');
 });
@@ -125,7 +127,7 @@ test('a filter that fires disqualifies the line and records which filter', () =>
 test('every candidate filtered leaves no winner', () => {
   const a = answersWhereAWins();
   for (const id of ['A', 'B', 'C']) a[`mod_hateful_${id}`] = noul(0.99);
-  const res = scoreResults({ answers: a, candidates: cands, weights: normalizeWeights({}), storyLength: 1, length: 'medium', filters: RATINGS.A.filters });
+  const res = scoreResults({ answers: a, candidates: cands, weights: normalizeWeights({}), storyLength: 1, length: 'medium', filters: RATINGS.T.filters });
   assert.equal(res.winner, null);
   assert.equal(res.ends, false);
 });
@@ -253,7 +255,39 @@ test('room names', () => {
     ['E', 'T', 'M', 'A'].map((c) => RATINGS[c].label),
     ['Safe for Everyone', 'Moderated for Teens', 'Mature Audience Only', 'Absolute Degenerates'],
   );
-  assert.ok(Object.values(RATINGS).every((r) => r.filters.some((f) => f.key === 'hateful')), 'hate is filtered in every room');
+  for (const code of ['E', 'T', 'M']) assert.ok(RATINGS[code].filters.some((f) => f.key === 'hateful'), `hate is filtered in ${RATINGS[code].label}`);
+  assert.deepEqual(RATINGS.A.filters, [], 'Absolute Degenerates has no filters at all');
+});
+
+test('a round stops waiting for players who are away or sat the last round out, until they type', () => {
+  const p = (id, extra = {}) => ({ id, connected: true, ...extra });
+  const round = (written, typing = {}) => ({ submissions: Object.fromEntries(written.map((id) => [id, { text: 'x' }])), typing });
+  const a = p('a');
+  const b = p('b');
+  const idle = p('c', { idleRounds: 1 });
+  const away = p('d', { away: true });
+  const gone = p('e', { connected: false });
+
+  // Everyone connected and active has written: close.
+  assert.equal(everyoneHasWritten([a, b], round(['a', 'b'])), true);
+  // Still waiting for an active player.
+  assert.equal(everyoneHasWritten([a, b], round(['a'])), false);
+  assert.equal(holdsUpRound(b, round(['a'])), true);
+  // A player who sat out the last round, or whose app is in the background,
+  // or who has disconnected, is not waited for.
+  assert.equal(everyoneHasWritten([a, b, idle], round(['a', 'b'])), true);
+  assert.equal(everyoneHasWritten([a, b, away], round(['a', 'b'])), true);
+  assert.equal(everyoneHasWritten([a, b, gone], round(['a', 'b'])), true);
+  // ...until the idle player starts typing in this round.
+  assert.equal(everyoneHasWritten([a, b, idle], round(['a', 'b'], { c: true })), false);
+  assert.equal(holdsUpRound(idle, round([], { c: true })), true);
+  // An away player is not waited for even while typing.
+  assert.equal(holdsUpRound({ ...away, idleRounds: 1 }, round([], { d: true })), false);
+  // At least one line must be in, and the game needs two connected players.
+  assert.equal(everyoneHasWritten([a, idle, away], round([])), false);
+  assert.equal(everyoneHasWritten([a, gone], round(['a'])), false);
+  // Only the idle one wrote: that is enough when nobody else is waited for.
+  assert.equal(everyoneHasWritten([idle, away], round(['c'])), true);
 });
 
 test('pickEmoji accepts only listed icons and falls back by join order', () => {

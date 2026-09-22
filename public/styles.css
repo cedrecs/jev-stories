@@ -113,6 +113,7 @@ button { cursor: pointer; }
   margin-bottom: 4px;
 }
 .error { color: var(--slime-danger); min-height: 1.4em; }
+#home-error { margin-bottom: 0; }
 .hint { color: var(--slime-muted); font-size: 0.85rem; margin: 4px 0 0; }
 
 /* ---------- controls ---------- */
@@ -293,7 +294,6 @@ input[type="range"] { width: 100%; height: var(--tap-min); margin: 0; accent-col
 .av { margin-right: 5px; }
 .step { display: block; font-weight: 700; font-size: var(--text-base); color: var(--slime-text); }
 .stack > .step-gap { margin-top: 18px; }
-.room-note { margin-top: 10px; }
 .setter-actions { gap: 8px; flex-wrap: nowrap; }
 
 /* ---------- story score ---------- */

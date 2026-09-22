@@ -3,7 +3,7 @@
 
 // Bump when the snapshot or message protocol changes: clients that see a
 // different version in a snapshot reload themselves to pick up new code.
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 // Player icons. Stored as code points so the source stays plain ASCII; the
 // client carries the same list. A player may pick any of them, repeats allowed.
@@ -110,7 +110,8 @@ export const DIMENSIONS = [
 // Rooms. Four fixed rooms, each with a preset list of content filters. Every
 // filter becomes one yes/no (Noul) question per candidate sentence; a line
 // answering yes to any filter of its room cannot win. Hate and harassment
-// are filtered in every room.
+// are filtered in every room except Absolute Degenerates, which has no
+// filters at all.
 //
 // Naming: players see the label and the link slug. The one-letter code is
 // only an internal key; it names the room's saved state (players, story,
@@ -226,7 +227,7 @@ export const RATINGS = {
     slug: 'absolute-degenerates',
     aliases: ['adult', 'degenerates'],
     tagline: 'Anything goes',
-    filters: [HATE],
+    filters: [],
   },
 };
 export const RATING_CODES = Object.keys(RATINGS);
@@ -383,6 +384,25 @@ export function settingsFromEnv(env) {
 export function nextSetter(connectedSorted, afterOrder) {
   if (!connectedSorted || !connectedSorted.length) return null;
   return connectedSorted.find((p) => p.order > afterOrder) || connectedSorted[0];
+}
+
+// The writing round waits for a connected player who has not written, unless
+// their app is in the background, or they sat out the last round and have not
+// started typing in this one. Waiting for them would only run the clock down
+// for everyone else; a slow typist is still waited for once they type.
+export function holdsUpRound(player, round) {
+  if (!player || !player.connected || !round || round.submissions[player.id]) return false;
+  if (player.away) return false;
+  return !(player.idleRounds > 0) || Boolean(round.typing && round.typing[player.id]);
+}
+
+// A round may close before its clock runs out once at least one line is in
+// and nobody it waits for is left. Like the game itself, it needs two
+// connected players.
+export function everyoneHasWritten(players, round) {
+  const connected = (players || []).filter((p) => p.connected);
+  if (connected.length < 2 || !round) return false;
+  return connected.some((p) => round.submissions[p.id]) && !connected.some((p) => holdsUpRound(p, round));
 }
 
 export function chunk(arr, size) {

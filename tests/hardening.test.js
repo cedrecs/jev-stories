@@ -95,7 +95,9 @@ test('nickname and theme checks ask one Noul per room filter, and the mock judge
   assert.deepEqual(rude.flags, ['profanity']);
   const none = await checkText({}, { text: 'x', filters: [] });
   assert.deepEqual(none.flags, [], 'no filters means nothing to ask');
-  await assert.rejects(checkText({}, { text: 'x', filters: RATINGS.A.filters }), /not configured/);
+  await assert.rejects(checkText({}, { text: 'x', filters: RATINGS.M.filters }), /not configured/);
+  const degenerate = await checkText({}, { text: 'anything', filters: RATINGS.A.filters });
+  assert.deepEqual(degenerate.flags, [], 'Absolute Degenerates checks nothing, so no judge is needed');
 });
 
 test('security headers: a strict policy, the room socket on this host, HSTS only over HTTPS', () => {

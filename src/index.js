@@ -38,9 +38,9 @@ function publicRoom(code, info) {
     slug: r.slug,
     aliases: r.aliases || [],
     tagline: r.tagline,
-    // Hate and harassment are filtered in every room; the home screen says so
-    // once, so each room lists only its own extra filters.
-    filters: r.filters.filter((f) => f.key !== 'hateful').map((f) => f.label),
+    // Every filter the room applies, hate and harassment included. Absolute
+    // Degenerates has none.
+    filters: r.filters.map((f) => f.label),
     players: info && info.exists ? info.players : 0,
     phase: info && info.exists ? info.phase : 'paused',
   };

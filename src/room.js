@@ -22,6 +22,8 @@ import {
   pickEmoji,
   ipKey,
   RateLimiter,
+  holdsUpRound,
+  everyoneHasWritten,
 } from './rules.js';
 import { judgeRound, candidateId, scoreStory, checkText, UNCHECKED } from './judge.js';
 
@@ -343,12 +345,31 @@ export class Room extends DurableObject {
         } else {
           r.round.submissions[player.id] = { text, at: now() };
         }
-        const connected = this.connectedPlayers();
-        if (connected.length >= 2 && connected.every((p) => r.round.submissions[p.id])) {
-          await this.closeWriting();
-        } else {
-          await this.commit();
-        }
+        if (this.roundCanClose()) await this.closeWriting();
+        else await this.commit();
+        return;
+      }
+
+      case 'typing': {
+        // A player who sat out the last round is waited for again once they
+        // start typing. Only their first keystroke of a round matters.
+        if (r.phase !== 'writing' || !r.round || !(player.idleRounds > 0)) return;
+        r.round.typing = r.round.typing || {};
+        if (r.round.typing[player.id]) return;
+        r.round.typing[player.id] = true;
+        await this.commit();
+        return;
+      }
+
+      case 'away': {
+        // The page went to the background or came back. An away player does
+        // not hold up a round the others have finished.
+        const away = msg.away === true;
+        if (Boolean(player.away) === away) return;
+        player.away = away;
+        this.rosterDirty = true;
+        if (this.roundCanClose()) await this.closeWriting();
+        else await this.commit();
         return;
       }
 
@@ -470,6 +491,8 @@ export class Room extends DurableObject {
         order: r.nextOrder++,
         joinedAt: now(),
         connected: true,
+        away: false,
+        idleRounds: 0,
         lastSeen: now(),
       };
       r.players[player.id] = player;
@@ -487,8 +510,10 @@ export class Room extends DurableObject {
         }
       }
       // A returning player keeps the icon they joined with: icons are chosen
-      // before joining and cannot change once in a room.
+      // before joining and cannot change once in a room. Their page reports
+      // again whether it is in the background.
       player.connected = true;
+      player.away = false;
       player.lastSeen = now();
     }
     r.emptySince = null;
@@ -548,15 +573,19 @@ export class Room extends DurableObject {
     // A paused room resumes first, so that a round everyone has already
     // written can close right away instead of staying paused.
     await this.checkPause();
-    // Everyone remaining has already written: close the round early.
-    if (r.phase === 'writing' && r.round) {
-      const connected = this.connectedPlayers();
-      if (connected.length >= 2 && connected.every((p) => r.round.submissions[p.id])) {
-        await this.closeWriting();
-        return;
-      }
+    // Everyone the round was waiting for has written: close it early.
+    if (this.roundCanClose()) {
+      await this.closeWriting();
+      return;
     }
     await this.commit();
+  }
+
+  // Whether the writing round can close before its clock runs out; see
+  // everyoneHasWritten in rules.js for who it waits for.
+  roundCanClose() {
+    const r = this.room;
+    return r.phase === 'writing' && Boolean(r.round) && everyoneHasWritten(Object.values(r.players), r.round);
   }
 
   // The setter role always belongs to a connected player. When the current
@@ -699,6 +728,12 @@ export class Room extends DurableObject {
     const r = this.room;
     if (r.phase !== 'writing' || this.judging) return;
     const candidates = this.roundCandidates();
+    // Who sat this round out while others wrote: the next rounds stop waiting
+    // for them until they write or start typing (see holdsUpRound). A round
+    // nobody wrote in marks nobody, since then everyone was likely away.
+    if (candidates.length) {
+      for (const p of this.connectedPlayers()) p.idleRounds = r.round.submissions[p.id] ? 0 : (p.idleRounds || 0) + 1;
+    }
 
     if (candidates.length === 0) {
       if (r.round.attempts < 1) {
@@ -1076,7 +1111,7 @@ export class Room extends DurableObject {
     const rating = this.rating();
     const players = Object.values(r.players)
       .sort((a, b) => a.order - b.order)
-      .map((p) => ({ id: p.id, nick: p.nick, emoji: p.emoji, score: p.score, wins: p.wins, connected: p.connected, joinedAt: p.joinedAt }));
+      .map((p) => ({ id: p.id, nick: p.nick, emoji: p.emoji, score: p.score, wins: p.wins, connected: p.connected, away: Boolean(p.away), joinedAt: p.joinedAt }));
     const story = r.story
       ? {
           index: r.story.index,
@@ -1089,13 +1124,20 @@ export class Room extends DurableObject {
           weights: r.story.weights,
         }
       : null;
-    const round = r.round
-      ? {
-          index: r.round.index,
-          attempts: r.round.attempts,
-          submittedCount: Object.keys(r.round.submissions).filter((id) => r.players[id]).length,
-        }
-      : null;
+    let round = null;
+    if (r.round) {
+      // "N of M players have written" counts those who have written plus
+      // those the round still waits for, not everyone connected.
+      const done = (p) => Boolean(r.round.submissions[p.id]);
+      const counted = this.connectedPlayers().filter((p) => done(p) || holdsUpRound(p, r.round));
+      round = {
+        index: r.round.index,
+        attempts: r.round.attempts,
+        submittedCount: Object.keys(r.round.submissions).filter((id) => r.players[id]).length,
+        writtenCount: counted.filter(done).length,
+        writerCount: counted.length,
+      };
+    }
     let results = null;
     if (r.results) {
       const tapCounts = new Array((r.results.top || []).length).fill(0);

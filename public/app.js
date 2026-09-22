@@ -24,7 +24,7 @@
       slug: 'safe-for-everyone',
       aliases: ['everyone'],
       tagline: 'Clean fun for all ages',
-      filters: ['violence', 'sexual content', 'swearing'],
+      filters: ['violence', 'sexual content', 'swearing', 'hate and harassment'],
       players: 0,
     },
     {
@@ -33,7 +33,7 @@
       slug: 'moderated-for-teens',
       aliases: ['teen', 'teens'],
       tagline: 'Mild language and cartoon mayhem are fine',
-      filters: ['graphic violence', 'explicit sexual content', 'strong profanity'],
+      filters: ['graphic violence', 'explicit sexual content', 'strong profanity', 'hate and harassment'],
       players: 0,
     },
     {
@@ -42,7 +42,7 @@
       slug: 'mature-audience-only',
       aliases: ['mature'],
       tagline: 'Strong language and adult humor allowed',
-      filters: ['pornographic description'],
+      filters: ['pornographic description', 'hate and harassment'],
       players: 0,
     },
     {
@@ -77,6 +77,8 @@
     String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const pct = (x) => `${Math.round((Number(x) || 0) * 100)}%`;
   const av = (e) => (e ? `<span class="av" aria-hidden="true">${esc(e)}</span>` : '');
+  // Green while the player is here; grey when disconnected or in the background.
+  const dotHtml = (p) => `<span class="dot ${p.connected && !p.away ? '' : 'off'}"></span>`;
 
   // ---------------------------------------------------------------- storage
   // Session storage keeps tabs independent; local storage survives a closed tab.
@@ -145,6 +147,8 @@
     ws: null,
     want: false,
     lastPong: 0,
+    sentAway: false,
+    typedKey: null,
     retries: 0,
     connLost: false,
     state: null,
@@ -255,7 +259,30 @@
     app.ws.send('ping');
   }
   setInterval(checkLiveness, PING_MS);
+
+  // Tells the room when this page goes to the background and comes back: a
+  // player who is away does not hold up a round the others have finished.
+  function reportAway() {
+    if (!app.ws || app.ws.readyState !== WebSocket.OPEN || !app.me) return;
+    const away = document.visibilityState === 'hidden';
+    if (away === app.sentAway) return;
+    app.sentAway = away;
+    app.ws.send(JSON.stringify({ type: 'away', away }));
+  }
+
+  // The first keystroke of a round tells the room this player is writing, so
+  // a player who sat out the last round is waited for again.
+  function noteTyping() {
+    const s = app.state;
+    if (!s || s.phase !== 'writing' || !s.round || !s.story) return;
+    const key = [s.story.index, s.story.theme, s.round.index, s.round.attempts].join('|');
+    if (app.typedKey === key || !app.ws || app.ws.readyState !== WebSocket.OPEN) return;
+    app.typedKey = key;
+    app.ws.send(JSON.stringify({ type: 'typing' }));
+  }
+
   document.addEventListener('visibilitychange', () => {
+    reportAway();
     if (document.visibilityState !== 'visible' || !app.ws || app.ws.readyState !== WebSocket.OPEN) return;
     // Back from the background: ask right away, and give up on a connection
     // that does not answer within a few seconds.
@@ -276,6 +303,9 @@
         app.connLost = false;
         saveIdentity(app.code, { token: msg.token, nick: msg.nick });
         store.set('jev:lastRoom', app.code);
+        // The server starts every connection as present; say so if this page is hidden.
+        app.sentAway = false;
+        reportAway();
         break;
       case 'state':
         // A deploy changed the protocol under us: fetch the matching client.
@@ -480,7 +510,6 @@
         </div>
         <div class="step step-gap">2. Choose a room</div>
         <div id="room-cards" class="room-list">${roomCardsHtml()}</div>
-        <p class="hint room-note">Note: all hate and harassment will be filtered out</p>
         <p class="error" id="home-error">${esc(app.homeError)}</p>
       </section>
       <section class="how">
@@ -508,7 +537,7 @@
     return `<ul class="players">${s.players
       .map(
         (p) =>
-          `<li><span class="dot ${p.connected ? '' : 'off'}"></span>${av(p.emoji)}${esc(p.nick)}${p.id === s.youId ? '<span class="badge you">you</span>' : ''}</li>`,
+          `<li>${dotHtml(p)}${av(p.emoji)}${esc(p.nick)}${p.id === s.youId ? '<span class="badge you">you</span>' : ''}</li>`,
       )
       .join('')}</ul>`;
   }
@@ -562,15 +591,18 @@
     return `<section class="card"><h3>Scores</h3><ol class="scores">${sorted
       .map(
         (p) =>
-          `<li><span class="dot ${p.connected ? '' : 'off'}"></span>${av(p.emoji)}${esc(p.nick)}${p.id === s.youId ? '<span class="badge you">you</span>' : ''}<span class="pts">${p.score}</span></li>`,
+          `<li>${dotHtml(p)}${av(p.emoji)}${esc(p.nick)}${p.id === s.youId ? '<span class="badge you">you</span>' : ''}<span class="pts">${p.score}</span></li>`,
       )
       .join('')}</ol>${s.players.length > 10 ? `<p class="hint">and ${s.players.length - 10} more, see Scores in the top bar</p>` : ''}</section>`;
   }
 
+  // Counts those who have written plus those the round still waits for; the
+  // server leaves out players who are away or sat the last round out.
   function submittedHtml(s) {
-    const connected = s.players.filter((p) => p.connected).length;
-    const n = s.round ? s.round.submittedCount : 0;
-    return `${n} of ${connected} ${connected === 1 ? 'player has' : 'players have'} written`;
+    const r = s.round || {};
+    const total = Number.isFinite(r.writerCount) ? r.writerCount : s.players.filter((p) => p.connected).length;
+    const n = Number.isFinite(r.writtenCount) ? r.writtenCount : r.submittedCount || 0;
+    return `${n} of ${total} ${total === 1 ? 'player has' : 'players have'} written`;
   }
 
   function myStatusHtml(s) {
@@ -960,7 +992,7 @@
     const me = s.players.find((p) => p.id === s.youId);
     const others = s.players.filter((p) => p.id !== s.youId).sort((a, b) => b.score - a.score || (a.joinedAt || 0) - (b.joinedAt || 0));
     const row = (p, mine) =>
-      `<li class="${mine ? 'me' : ''}"><span class="dot ${p.connected ? '' : 'off'}"></span>${av(p.emoji)}<span class="who"><span class="who-name">${esc(
+      `<li class="${mine ? 'me' : ''}">${dotHtml(p)}${av(p.emoji)}<span class="who"><span class="who-name">${esc(
         p.nick,
       )}${p.id === setterId ? '<span class="badge jev">theme</span>' : ''}${mine ? '<span class="badge you">you</span>' : ''}</span><span class="since" data-since="${
         Number(p.joinedAt) || 0
@@ -1186,6 +1218,7 @@
     if (t.id === 'sentence') {
       app.draft = t.value;
       updateChars(t);
+      noteTyping();
       const status = screenEl.querySelector('[data-my-status]');
       if (status && app.state) status.textContent = myStatusHtml(app.state);
     } else if (t.id === 'theme') {

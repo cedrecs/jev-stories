@@ -18,6 +18,8 @@ Live: https://jev-stories.jev-stories.workers.dev
    of time or leaves, the next player in line takes over.
 4. Every round, everyone (setter included) writes one sentence against the
    clock. The round closes when everyone has written or the timer runs out.
+   It does not wait for a player whose app is in the background, or for one
+   who sat out the last round and has not started typing in this one.
 5. Jev reads every candidate and the story so far. The winner is appended to
    the story and its author scores a point.
 6. The reveal shows the top five with Jev's share and a per-dimension
@@ -45,15 +47,15 @@ Live: https://jev-stories.jev-stories.workers.dev
 
 | Room | Link | Jev filters |
 | --- | --- | --- |
-| Safe for Everyone | `/safe-for-everyone` | any violence beyond slapstick, any sexual reference, any swearing |
-| Moderated for Teens | `/moderated-for-teens` | graphic violence, explicit sexual content, strong profanity |
-| Mature Audience Only | `/mature-audience-only` | pornographic description |
-| Absolute Degenerates | `/absolute-degenerates` | nothing extra |
+| Safe for Everyone | `/safe-for-everyone` | any violence beyond slapstick, any sexual reference, any swearing, hate and harassment |
+| Moderated for Teens | `/moderated-for-teens` | graphic violence, explicit sexual content, strong profanity, hate and harassment |
+| Mature Audience Only | `/mature-audience-only` | pornographic description, hate and harassment |
+| Absolute Degenerates | `/absolute-degenerates` | nothing |
 
-Hate and harassment are filtered out in every room. A filtered line cannot
-win. Its author sees why; nobody else sees the line, or whose it was. A line
-Jev could not check cannot win either. Nicknames and themes go through the
-same filters and are refused when they fail. The presets live in
+Absolute Degenerates has no filters at all. In the other rooms a filtered
+line cannot win. Its author sees why; nobody else sees the line, or whose it
+was. A line Jev could not check cannot win either. Nicknames and themes go
+through the same filters and are refused when they fail. The presets live in
 `src/rules.js` (`RATINGS`). Links from before the rooms were renamed,
 `/everyone`, `/teen`, `/mature` and `/adult`, still open the same rooms.
 
