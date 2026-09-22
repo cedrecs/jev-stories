@@ -6,6 +6,17 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["wrangler", "dev", "--port", "8787"],
       "port": 8787
+    },
+    {
+      "name": "jev-stories-slow",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "wrangler", "dev", "--port", "8788", "--inspector-port", "9331",
+        "--persist-to", ".wrangler/state-slow",
+        "--var", "THEME_SECONDS:180", "--var", "WRITING_SECONDS:120",
+        "--var", "REVEAL_SECONDS:120", "--var", "STORY_END_SECONDS:120"
+      ],
+      "port": 8788
     }
   ]
 }

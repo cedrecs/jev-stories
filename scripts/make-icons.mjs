@@ -15,7 +15,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 const MASTER = join(root, 'assets', 'logo-source.png');
 const OUT = join(root, 'public', 'icons');
-const BACKGROUND = [0x15, 0x12, 0x1f, 255]; // manifest background_color
+const BACKGROUND = [0x0e, 0x15, 0x12, 255]; // manifest background_color
 
 // ------------------------------------------------------------------ PNG I/O
 
