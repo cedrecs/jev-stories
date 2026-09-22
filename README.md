@@ -11,12 +11,18 @@ Activity served from https://yarn.jevie.app.
 
 1. Pick an emoji icon, a nickname and one of four rooms. No accounts, no
    room codes. The icon is fixed once you join a room.
+
+   <img src="docs/screenshots/home.png" alt="The home page: an icon, a nickname, and the four rooms with what Jev filters in each and how many are playing" width="380">
+
 2. A room runs whenever two or more people are in it. There is no host.
 3. Players take turns as **theme setter**. The setter writes a theme, picks a
    story length (Short 4 to 7 lines, Medium 7 to 12, Long 12 to 18) and can
    tune what Jev rewards with four sliders: Funny, Flows, On theme,
    Surprising. The sliders can be changed every round. If the setter runs out
    of time or leaves, the next player in line takes over.
+
+   <img src="docs/screenshots/set-theme.png" alt="The theme setter's screen: a theme, a story length, and the sliders for Jev's taste" width="460">
+
 4. Every round, everyone (setter included) writes one sentence against the
    clock. The round closes when everyone has written or the timer runs out.
    It does not wait for a player whose app is in the background, or for one
@@ -31,6 +37,9 @@ Activity served from https://yarn.jevie.app.
    default sliders toward what its players enjoy, and the Scores drawer shows
    how often players agreed with Jev. The setter can skip ahead, or end the
    story right there after confirming; Jev then scores it as usual.
+
+   <img src="docs/screenshots/reveal.png" alt="Jev has spoken: the winning line with its 86% share, the runners-up with their breakdowns and picks, and the story so far" width="460">
+
 7. Jev also judges whether the story feels finished. Once past its minimum
    length, a winning line that reads like an ending closes the story; the
    maximum length is a hard stop. Jev then scores the finished story out of
@@ -94,6 +103,7 @@ src/headers.js       Security headers and the Content-Security-Policy
 src/preview.js       Link previews: absolute URLs and a card per room
 public/              PWA: index.html, app.js, styles.css, sw.js, manifest, icons, fonts, vendor
 assets/              logo-source.png, the master logo every icon and the preview image come from
+docs/screenshots/    the README's screenshots
 scripts/             make-icons.mjs (icons), build-discord-sdk.mjs (Discord SDK bundle), load-test.mjs (synthetic players)
 tests/               node --test suites
 ```
