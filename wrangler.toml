@@ -2,11 +2,14 @@ name = "jev-stories"
 main = "src/index.js"
 compatibility_date = "2026-08-01"
 
-# The game's address is its own domain, a Workers Custom Domain (Cloudflare
-# makes the DNS record and the certificate). The workers.dev address stays on
-# while players and the Discord app's URL mapping move over; setting routes
-# would otherwise switch it off.
-routes = [{ pattern = "jev-yarn.jevie.app", custom_domain = true }]
+# Two Workers Custom Domains (Cloudflare makes the DNS records and the
+# certificates): the website, and the Discord version's address, which the
+# Discord app's URL mapping points at. The workers.dev address stays on so old
+# links keep forwarding; setting routes would otherwise switch it off.
+routes = [
+  { pattern = "jev-yarn.jevie.app", custom_domain = true },
+  { pattern = "yarn.jevie.app", custom_domain = true },
+]
 workers_dev = true
 
 # Static PWA shell. Unknown paths (e.g. /r/ABCD invite links) fall back to index.html.
@@ -39,9 +42,13 @@ enabled = true
 # ID, which is public. Room connections are accepted from its address,
 # <id>.discordsays.com. Empty means the game is not set up for Discord.
 DISCORD_CLIENT_ID = "1551812885666332682"
-# The game's own address. Page visits to the old workers.dev address are
+# The website's address. Page visits to the old workers.dev address are
 # forwarded here (src/headers.js). Staging leaves it unset and forwards nothing.
 CANONICAL_HOST = "jev-yarn.jevie.app"
+# The Discord version's address. It serves the Discord terms and privacy pages
+# at /terms and /privacy; any other visit from an ordinary browser goes to the
+# website. Staging leaves it unset.
+DISCORD_HOST = "yarn.jevie.app"
 # Room settings are fixed per deployment. Uncomment a line to change a default
 # (values are clamped to the ranges in src/rules.js):
 # WRITING_SECONDS = "60"      # 30 to 120, per line

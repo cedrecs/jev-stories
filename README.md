@@ -4,7 +4,8 @@ A party game inspired by Y.A.R.N.: everyone writes the next line of a shared
 story, and instead of a vote, **TypeSafe's Jev** picks the winner. Installable
 as a PWA, runs on Cloudflare Workers with one Durable Object per room.
 
-Live: https://jev-yarn.jevie.app
+Live: https://jev-yarn.jevie.app (the website) and, inside Discord, as an
+Activity served from https://yarn.jevie.app.
 
 ## How a game plays
 
@@ -107,12 +108,22 @@ in `wrangler.toml` (see the comments there) and redeploy.
 ## Discord
 
 The game also runs inside Discord as an Activity, from the App Launcher in a
-server channel or group chat. There each call (Activity instance) gets its
-own private set of the four rooms; the website keeps its public rooms.
-Players type a nickname as they do on the web.
+server channel or group chat. The Discord version has no rooms: the call is
+the room. Each call (Activity instance) plays one private game (code `D`)
+with the Moderated for Teens filters, so the app can be listed in Discord's
+App Directory, which allows no age-restricted content. Its home page is the
+website's without the room list: players type a nickname and press Join. The
+website keeps its four public rooms. The server enforces the split: a call
+can open only its own game, and the website only its four rooms
+(`roomAllowed` in `src/rules.js`).
+
+The page runs as the Discord version whenever Discord's launch details
+(`frame_id` and `instance_id`) are in its address. To see it locally, open
+`http://localhost:8787/?frame_id=test&instance_id=test`; the Discord SDK
+itself loads only on `discordsays.com`.
 
 Setup: create an app in the Discord Developer Portal, enable Activities, map
-the prefix `/` to the game's host (`jev-yarn.jevie.app`),
+the prefix `/` to the Discord version's host (`yarn.jevie.app`),
 allow User and Guild install, and put the app's Application ID in
 `DISCORD_CLIENT_ID` in `wrangler.toml`. The ID is public, not a secret. The
 Worker then accepts room connections from `<id>.discordsays.com`, and only
@@ -126,10 +137,13 @@ hosts.
 
 ## Terms and privacy
 
-The Terms of Service and the Privacy Policy live at `/terms` and `/privacy`
-(`public/terms.html`, `public/privacy.html`) and are linked from the bottom of
-the home page. The Discord app's portal points at the same two addresses. If
-what the game stores or sends anywhere changes, update the Privacy Policy.
+Each version has its own Terms of Service and Privacy Policy. The website's
+live at `/terms` and `/privacy` (`public/terms.html`, `public/privacy.html`)
+and are linked from the bottom of its home page. The Discord version's
+(`public/discord/terms.html`, `public/discord/privacy.html`) answer at the
+same two paths on its own host, `https://yarn.jevie.app/terms` and
+`/privacy` (`DISCORD_HOST`), and the Discord app's portal points there. If
+what the game stores or sends anywhere changes, update both privacy policies.
 
 ## Limits and headers
 
@@ -160,11 +174,14 @@ which is more reliable on some Windows setups. `secret bulk` reads the key
 from `.dev.vars` so nothing is pasted or echoed.
 Re-run `npm run deploy` after code changes; the secret stays.
 
-The live game answers on its own domain, set as a Workers Custom Domain in
-`routes` in `wrangler.toml`; Cloudflare makes its DNS record and certificate.
-A staging copy lives in the `[env.staging]` section of the same file and
-deploys with `npx wrangler deploy --env staging`, to its own workers.dev
-address and never to the custom domain.
+The live game answers on two Workers Custom Domains, set in `routes` in
+`wrangler.toml`: the website, `jev-yarn.jevie.app`, and the Discord
+version's host, `yarn.jevie.app`. Cloudflare makes their DNS records and
+certificates. The Discord host is meant to be opened by Discord only: apart
+from its terms and privacy pages, a visit from an ordinary browser is sent to
+the website. A staging copy lives in the `[env.staging]` section of the same
+file and deploys with `npx wrangler deploy --env staging`, to its own
+workers.dev address and never to the custom domains.
 
 The game's first address, `jev-stories.jev-stories.workers.dev`, forwards
 page visits to the domain (`CANONICAL_HOST`). Its files, room list and room

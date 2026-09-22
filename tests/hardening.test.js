@@ -1,8 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanText, normalizeLength, RateLimiter, ipKey, LENGTHS, RATINGS, DIMENSIONS, normalizeWeights, isInstanceId, roomObjectName } from '../src/rules.js';
+import {
+  cleanText,
+  normalizeLength,
+  RateLimiter,
+  ipKey,
+  LENGTHS,
+  RATINGS,
+  RATING_CODES,
+  DISCORD_CODE,
+  DIMENSIONS,
+  normalizeWeights,
+  isInstanceId,
+  roomObjectName,
+  roomAllowed,
+  ratingFromSlug,
+} from '../src/rules.js';
 import { scoreResults, UNCHECKED, buildTextCheckRequest, checkText } from '../src/judge.js';
-import { securityHeaders, allowedOrigins, withHeaders, forwardToCanonical } from '../src/headers.js';
+import { securityHeaders, allowedOrigins, withHeaders, forwardToCanonical, discordPage } from '../src/headers.js';
 import { linkPreview } from '../src/preview.js';
 
 test('cleanText strips invisible and bidirectional characters and counts code points', () => {
@@ -169,4 +184,48 @@ test('the old workers.dev address forwards page visits only', () => {
   assert.equal(fwd(req('/', 'document', 'GET', 'https://jev-yarn.jevie.app')), null, 'the new address itself');
   assert.equal(fwd(req('/'), ''), null, 'staging sets no address, so nothing moves');
   assert.equal(forwardToCanonical(req('/'), new URL(old), undefined), null);
+});
+
+test('the Discord version: one game per call, with the teen filters, and none of the website rooms', () => {
+  const call = 'i-1234567890-gc-1-2';
+  assert.deepEqual(RATING_CODES, ['E', 'T', 'M', 'A'], 'the website lists its four rooms, never the call game');
+  assert.equal(DISCORD_CODE, 'D');
+  assert.deepEqual(
+    RATINGS.D.filters.map((f) => f.key),
+    ['violence', 'sexual', 'profanity', 'hateful'],
+    'the Moderated for Teens filters, hate and harassment included',
+  );
+  for (const code of RATING_CODES) {
+    assert.equal(roomAllowed(code), true);
+    assert.equal(roomAllowed(code, call), false, `a call cannot open ${RATINGS[code].label}`);
+  }
+  assert.equal(roomAllowed('D'), false, 'the website cannot open a call game');
+  assert.equal(roomAllowed('D', call), true);
+  assert.equal(roomAllowed('Z'), false);
+  assert.equal(roomAllowed('Z', call), false);
+  assert.equal(roomObjectName('D', call), `discord:${call}:D`, 'each call gets its own game');
+  assert.equal(ratingFromSlug('discord-call'), null, 'no website link reaches it');
+  assert.equal(linkPreview(new URL('https://jev-yarn.jevie.app/discord-call')).title, null);
+});
+
+test('the Discord address serves its own terms and privacy, and sends browsers to the website', () => {
+  const host = 'yarn.jevie.app';
+  assert.equal(discordPage(new URL('https://yarn.jevie.app/terms'), host), '/discord/terms');
+  assert.equal(discordPage(new URL('https://yarn.jevie.app/privacy/'), host), '/discord/privacy');
+  assert.equal(discordPage(new URL('https://yarn.jevie.app/'), host), null);
+  assert.equal(discordPage(new URL('https://yarn.jevie.app/terms.html'), host), null);
+  assert.equal(discordPage(new URL('https://jev-yarn.jevie.app/terms'), host), null, 'the website keeps its own pages');
+  assert.equal(discordPage(new URL('https://yarn.jevie.app/terms'), undefined), null, 'staging sets no Discord address');
+  const req = (path, dest = 'document') => new Request(`https://${host}${path}`, { headers: dest ? { 'Sec-Fetch-Dest': dest } : {} });
+  const fwd = (r) => forwardToCanonical(r, new URL(r.url), 'jev-yarn.jevie.app', host);
+  const sent = fwd(req('/moderated-for-teens?x=1'));
+  assert.equal(sent.status, 302, 'a temporary move: the address stays in use');
+  assert.equal(sent.headers.get('Location'), 'https://jev-yarn.jevie.app/moderated-for-teens?x=1');
+  assert.equal(fwd(req('/terms')), null, 'its terms stay');
+  assert.equal(fwd(req('/privacy')), null, 'and its privacy policy');
+  assert.equal(fwd(req('/?instance_id=i-1&frame_id=f&platform=desktop')), null, 'a Discord launch stays');
+  assert.equal(fwd(req('/', 'iframe')), null, 'inside Discord the page is a frame');
+  assert.equal(fwd(req('/app.js', 'script')), null);
+  assert.equal(fwd(req('/ws/D?instance=i-1', 'websocket')), null);
+  assert.equal(fwd(req('/', null)), null, 'link previews still get the page');
 });

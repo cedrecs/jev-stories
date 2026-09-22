@@ -1,6 +1,6 @@
 // Service worker: caches the app shell so the PWA installs and opens fast.
 // Game traffic (/ws/*, /api/*) never goes through the cache.
-const VERSION = 'jev-yarn-v4';
+const VERSION = 'jev-yarn-v5';
 const SHELL = [
   '/',
   '/index.html',

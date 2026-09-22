@@ -46,15 +46,32 @@ export function allowedOrigins(url, discordClientId) {
   return out;
 }
 
-// The game's old workers.dev address forwards people to its own domain. Only
-// a browser's top-level page load moves: files, the room list and the room
-// connections keep answering there, so pages already open finish their games,
+// The asset to serve instead on the Discord version's own address: its terms
+// and privacy pages are the Discord ones. Null anywhere else.
+export function discordPage(url, discordHost) {
+  if (!discordHost || url.hostname !== discordHost) return null;
+  const m = url.pathname.match(/^\/(terms|privacy)\/?$/);
+  return m ? `/discord/${m[1]}` : null;
+}
+
+// Page visits that belong on the website. Only a browser's top-level page
+// load moves: files, the room list and the room connections keep answering,
 // and a Discord launch (frame_id and instance_id in the address) is never
-// forwarded, whatever Discord's URL mapping still points at.
-export function forwardToCanonical(request, url, canonicalHost) {
-  if (!canonicalHost || url.hostname === canonicalHost || !url.hostname.endsWith('.workers.dev')) return null;
+// forwarded.
+// - The game's old workers.dev address forwards to the website for good.
+// - The Discord version's address runs only inside Discord: apart from its
+//   terms and privacy pages, a visit from an ordinary browser goes to the
+//   website instead.
+export function forwardToCanonical(request, url, canonicalHost, discordHost = null) {
+  if (!canonicalHost || url.hostname === canonicalHost) return null;
+  const onDiscordHost = Boolean(discordHost) && url.hostname === discordHost;
+  if (!onDiscordHost && !url.hostname.endsWith('.workers.dev')) return null;
   if (request.method !== 'GET' || request.headers.get('Sec-Fetch-Dest') !== 'document') return null;
   if (url.searchParams.has('frame_id') || url.searchParams.has('instance_id')) return null;
+  if (onDiscordHost) {
+    if (discordPage(url, discordHost)) return null;
+    return Response.redirect(`https://${canonicalHost}${url.pathname}${url.search}`, 302);
+  }
   return Response.redirect(`https://${canonicalHost}${url.pathname}${url.search}`, 301);
 }
 

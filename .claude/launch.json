@@ -17,6 +17,16 @@
         "--var", "REVEAL_SECONDS:120", "--var", "STORY_END_SECONDS:120"
       ],
       "port": 8788
+    },
+    {
+      "name": "jev-yarn-discord-host",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "wrangler", "dev", "--port", "8790", "--inspector-port", "9332",
+        "--persist-to", ".wrangler/state-discord-host",
+        "--var", "DISCORD_HOST:jev-yarn.jevie.app", "--var", "CANONICAL_HOST:canonical.example"
+      ],
+      "port": 8790
     }
   ]
 }

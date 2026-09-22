@@ -2,16 +2,16 @@
 // room's Durable Object. Everything else is a static asset, served through
 // the Worker so that every response carries the security headers.
 //
-// There are four fixed rooms: Safe for Everyone, Moderated for Teens, Mature
-// Audience Only and Absolute Degenerates, keyed internally by the codes E, T,
-// M and A. A room's Durable Object is created on first contact and lives on
-// from then. Inside Discord, where the game runs as an Activity, each call
-// (Activity instance) gets its own private set of the same four rooms: the
-// page adds ?instance=<id> to its requests.
+// The website has four fixed rooms: Safe for Everyone, Moderated for Teens,
+// Mature Audience Only and Absolute Degenerates, keyed internally by the codes
+// E, T, M and A. A room's Durable Object is created on first contact and lives
+// on from then. The Discord version (an Activity, at its own address) has no
+// rooms to choose: each call (Activity instance) gets one private game with
+// the code D, and the page adds ?instance=<id> to its requests.
 
 import { Room } from './room.js';
-import { RATINGS, RATING_CODES, isInstanceId, roomObjectName } from './rules.js';
-import { securityHeaders, allowedOrigins, withHeaders, forwardToCanonical } from './headers.js';
+import { RATINGS, RATING_CODES, DISCORD_CODE, isInstanceId, roomObjectName, roomAllowed } from './rules.js';
+import { securityHeaders, allowedOrigins, withHeaders, forwardToCanonical, discordPage } from './headers.js';
 import { withPreview } from './preview.js';
 
 export { Room };
@@ -33,10 +33,10 @@ function roomStub(env, code, instance = null) {
   return env.ROOM.get(env.ROOM.idFromName(roomObjectName(code, instance)));
 }
 
-// The four rooms of one Discord call, with who is in each.
+// The one game of a Discord call, with who is in it.
 async function instanceRoomList(env, instance) {
-  const infos = await Promise.all(RATING_CODES.map((code) => roomStub(env, code, instance).info()));
-  return RATING_CODES.map((code, i) => publicRoom(code, infos[i]));
+  const info = await roomStub(env, DISCORD_CODE, instance).info();
+  return [publicRoom(DISCORD_CODE, info)];
 }
 
 function publicRoom(code, info) {
@@ -89,7 +89,7 @@ async function route(request, env, url) {
   let m = path.match(/^\/api\/rooms\/([A-Za-z])$/);
   if (m && request.method === 'GET') {
     const code = m[1].toUpperCase();
-    if (!RATINGS[code]) return json({ error: 'No such room' }, 404);
+    if (!roomAllowed(code)) return json({ error: 'No such room' }, 404);
     const rooms = await roomList(env);
     return json(rooms.find((r) => r.code === code));
   }
@@ -97,7 +97,10 @@ async function route(request, env, url) {
   m = path.match(/^\/ws\/([A-Za-z])$/);
   if (m) {
     const code = m[1].toUpperCase();
-    if (!RATINGS[code]) return new Response('No such room', { status: 404 });
+    const instance = url.searchParams.get('instance');
+    if (instance !== null && !isInstanceId(instance)) return new Response('No such call', { status: 400 });
+    // A Discord call plays only its own game; the website only its four rooms.
+    if (!roomAllowed(code, instance)) return new Response('No such room', { status: 404 });
     if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response('Expected a WebSocket upgrade', { status: 426 });
     }
@@ -106,8 +109,6 @@ async function route(request, env, url) {
     // website cannot play through a visitor's browser.
     const origin = request.headers.get('Origin');
     if (origin && !allowedOrigins(url, env.DISCORD_CLIENT_ID).includes(origin)) return new Response('Forbidden', { status: 403 });
-    const instance = url.searchParams.get('instance');
-    if (instance !== null && !isInstanceId(instance)) return new Response('No such call', { status: 400 });
     const stub = roomStub(env, code, instance);
     await stub.create(code, instance ? 'discord' : 'public');
     return stub.fetch(request);
@@ -116,6 +117,9 @@ async function route(request, env, url) {
   if (path.startsWith('/api/') || path.startsWith('/ws/')) {
     return json({ error: 'Not found' }, 404);
   }
+  // The Discord version's address serves its own terms and privacy pages.
+  const page = discordPage(url, env.DISCORD_HOST);
+  if (page) return env.ASSETS.fetch(new Request(new URL(page, url), request));
   // Pages get their link-preview tags filled in on the way out.
   const asset = await env.ASSETS.fetch(request);
   return request.method === 'GET' ? withPreview(asset, url) : asset;
@@ -126,7 +130,7 @@ export default {
     const url = new URL(request.url);
     let response;
     try {
-      response = forwardToCanonical(request, url, env.CANONICAL_HOST) || (await route(request, env, url));
+      response = forwardToCanonical(request, url, env.CANONICAL_HOST, env.DISCORD_HOST) || (await route(request, env, url));
     } catch (err) {
       console.error('request failed', err);
       response = json({ error: 'Something went wrong' }, 500);

@@ -70,6 +70,9 @@
   const launch = new URLSearchParams(location.search);
   const DISCORD = launch.has('frame_id') && launch.has('instance_id');
   const discord = { instanceId: DISCORD ? launch.get('instance_id') : null, sdk: null };
+  // The Discord version has no rooms to choose: each call has one game, which
+  // the server keeps suitable for ages 13 and up.
+  const DISCORD_CODE = 'D';
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const screenEl = $('#screen');
@@ -407,7 +410,8 @@
 
   async function refreshRooms() {
     clearInterval(app.roomsTimer);
-    if (app.screen !== 'home') return;
+    // Inside Discord there is no room list to keep fresh.
+    if (app.screen !== 'home' || DISCORD) return;
     try {
       const res = await fetch(`/api/rooms${instanceQuery()}`, { cache: 'no-store' });
       if (res.ok) {
@@ -423,19 +427,35 @@
     if (app.screen === 'home') app.roomsTimer = setTimeout(refreshRooms, 8000);
   }
 
-  function joinFromHome(code) {
+  // The nickname from the home screen, or null (with the error shown) if empty.
+  function readNick() {
     const nick = (($('#nick') && $('#nick').value) || '').trim().slice(0, 20);
-    if (!nick) {
-      setHomeError('Pick a nickname first.');
-      const input = $('#nick');
-      if (input) input.focus();
-      return;
-    }
+    if (nick) return nick;
+    setHomeError('Pick a nickname first.');
+    const input = $('#nick');
+    if (input) input.focus();
+    return null;
+  }
+
+  function joinFromHome(code) {
+    const nick = readNick();
+    if (!nick) return;
     if (!roomByCode(code)) return setHomeError('That room does not exist.');
     setHomeError('');
     store.set('jev:nick', nick);
     const ident = loadIdentity(code);
     enterRoom(code, nick, ident && ident.nick === nick ? ident.token : null);
+  }
+
+  // Inside Discord the call is the room: Join takes the nickname straight into
+  // this call's one game.
+  function joinCall() {
+    const nick = readNick();
+    if (!nick) return;
+    setHomeError('');
+    store.set('jev:nick', nick);
+    const ident = loadIdentity(DISCORD_CODE);
+    enterRoom(DISCORD_CODE, nick, ident && ident.nick === nick ? ident.token : null);
   }
 
   // ----------------------------------------------------------------- render
@@ -450,7 +470,7 @@
       $('#tb-count').textContent = '';
       $('#tb-story').textContent = '';
       screenEl.innerHTML = `<section class="card center"><div class="spinner"></div><p class="muted">Joining ${esc(
-        room ? room.label : 'the room',
+        room ? room.label : 'the game',
       )}…</p>${app.retries > 4 ? '<button class="btn" data-action="retry">Try again</button>' : ''}</section>`;
       return;
     }
@@ -515,13 +535,17 @@
         <p class="tagline">Everyone writes the next line. Jev picks the winner.</p>
       </section>
       <section class="card stack">
-        <label for="nick" class="step">1. Pick an icon and submit a nickname</label>
+        <label for="nick" class="step">${DISCORD ? '' : '1. '}Pick an icon and submit a nickname</label>
         <div class="nick-row">
           ${emojiPickerHtml('emoji-home')}
-          <input id="nick" maxlength="20" autocomplete="nickname" placeholder="e.g. Captain Goose" value="${esc(savedNick)}">
+          <input id="nick" maxlength="20" autocomplete="nickname" placeholder="e.g. Captain Goose" value="${esc(savedNick)}"${DISCORD ? ' enterkeyhint="go"' : ''}>
         </div>
-        <div class="step step-gap">2. Choose a room</div>
-        <div id="room-cards" class="room-list">${roomCardsHtml()}</div>
+        ${
+          DISCORD
+            ? '<button class="btn primary big" data-action="join-call">Join</button>'
+            : `<div class="step step-gap">2. Choose a room</div>
+        <div id="room-cards" class="room-list">${roomCardsHtml()}</div>`
+        }
         <p class="error" id="home-error">${esc(app.homeError)}</p>
       </section>
       <section class="how">
@@ -649,7 +673,7 @@
     return `
       <section class="card center">
         <h2>Waiting for players</h2>
-        <p class="muted">The game starts as soon as two or more people are in the room.</p>
+        <p class="muted">The game starts as soon as two or more people ${DISCORD ? 'in the call have joined' : 'are in the room'}.</p>
         ${DISCORD ? '' : '<button class="btn primary" data-action="copy-link">Copy invite link</button>'}
         <div style="margin-top:16px" data-players>${playersHtml(s)}</div>
       </section>
@@ -1114,6 +1138,8 @@
     switch (action) {
       case 'join':
         return joinFromHome(btn.dataset.code);
+      case 'join-call':
+        return joinCall();
       case 'retry':
         app.retries = 0;
         if (!app.ws) openSocket();
@@ -1216,6 +1242,10 @@
     if (t.matches && t.matches('[data-action="tap"]')) {
       e.preventDefault();
       handleAction('tap', t);
+    } else if (t.id === 'nick' && DISCORD) {
+      // Inside Discord, Enter in the nickname box is the same as Join.
+      e.preventDefault();
+      joinCall();
     } else if (t.id === 'theme') {
       e.preventDefault();
       handleAction('set-theme');
@@ -1269,10 +1299,9 @@
   // ------------------------------------------------------------------ boot
   if (DISCORD) {
     startDiscord();
-    // Invites happen in Discord itself: the room name is not a link to copy.
-    const pill = $('.tb-code');
-    pill.removeAttribute('data-action');
-    pill.removeAttribute('title');
+    // The call is the room, so there is no room name to show, and invites
+    // happen in Discord itself.
+    $('.tb-code').hidden = true;
   }
   app.emoji = (() => {
     const saved = store.get('jev:emoji');
@@ -1284,7 +1313,7 @@
   // The room to go back to: the one in the address, or inside Discord (where
   // the address stays Discord's) the last one joined in this call.
   const lastCode = DISCORD ? store.get(lastRoomKey()) : null;
-  const urlCode = DISCORD ? (roomByCode(lastCode) ? lastCode : null) : codeFromUrl();
+  const urlCode = DISCORD ? (lastCode === DISCORD_CODE ? lastCode : null) : codeFromUrl();
   const cached = urlCode ? loadIdentity(urlCode) : null;
   if (urlCode && cached && cached.token) {
     // A refresh mid-game goes straight back to the seat.

@@ -306,7 +306,7 @@ input[type="range"] { width: 100%; height: var(--tap-min); margin: 0; accent-col
 .legal li { margin-bottom: 6px; }
 .legal li::marker { color: var(--slime-primary); }
 .legal .legal-links { margin-top: 32px; }
-.legal-home { margin: 0; font-family: var(--font-display); font-synthesis: none; font-size: var(--text-heading); }
+.legal-home { margin: 0; color: var(--slime-primary); font-family: var(--font-display); font-synthesis: none; font-size: var(--text-heading); }
 .legal-home a { color: var(--slime-primary); font-weight: 400; text-decoration: none; }
 
 /* ---------- player icons ---------- */

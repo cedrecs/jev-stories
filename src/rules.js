@@ -229,26 +229,47 @@ export const RATINGS = {
     tagline: 'Anything goes',
     filters: [],
   },
+  // The Discord version has no rooms to choose from: the call is the room, and
+  // each call gets one game with this rating. Discord lists only apps suitable
+  // for ages 13 and up, so it uses the Moderated for Teens filters. It never
+  // appears on the website.
+  D: {
+    code: 'D',
+    label: 'Jev Yarn',
+    slug: 'discord-call',
+    aliases: [],
+    tagline: 'One game for everyone in the call',
+    discordOnly: true,
+  },
 };
-export const RATING_CODES = Object.keys(RATINGS);
+RATINGS.D.filters = RATINGS.T.filters;
+export const DISCORD_CODE = 'D';
+// The website's four rooms, in order.
+export const RATING_CODES = Object.keys(RATINGS).filter((code) => !RATINGS[code].discordOnly);
 
-// Inside Discord the rooms are private to the call: each Activity instance
-// gets its own set of the four rooms. This checks an instance id as Discord
-// passes it to the page.
+// Inside Discord each call (Activity instance) gets its own private game.
+// This checks an instance id as Discord passes it to the page.
 export function isInstanceId(id) {
   return typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id);
 }
 
 // The name of a room's Durable Object: a public room by its rating code, a
-// Discord call's room by instance and rating code.
+// Discord call's game by instance and rating code.
 export function roomObjectName(code, instance = null) {
   return instance ? `discord:${instance}:${code}` : `rating:${code}`;
 }
+
+// Which room a connection may open: a Discord call plays only its own game;
+// the website offers its four rooms and never the Discord one.
+export function roomAllowed(code, instance = null) {
+  return instance ? code === DISCORD_CODE : RATING_CODES.includes(code);
+}
+
 // Rooms are found by their link slug, or by an older slug kept as an alias so
 // links shared before the rename still open the same room.
 export function ratingFromSlug(slug) {
   const s = String(slug || '').toLowerCase();
-  return Object.values(RATINGS).find((r) => r.slug === s || (r.aliases || []).includes(s)) || null;
+  return RATING_CODES.map((code) => RATINGS[code]).find((r) => r.slug === s || (r.aliases || []).includes(s)) || null;
 }
 // A candidate is filtered when an enabled filter's probability passes this.
 export const MODERATION_THRESHOLD = 0.5;
