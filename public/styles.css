@@ -288,7 +288,6 @@ input[type="range"] { width: 100%; height: var(--tap-min); margin: 0; accent-col
 /* ---------- home ---------- */
 .hero { text-align: center; padding: 20px 0 12px; }
 .hero h1 { margin: 0 0 14px; }
-.hero .logo { display: block; margin: 0 auto 14px; width: 128px; height: 128px; filter: drop-shadow(0 4px 0 var(--goo)); }
 .tagline { color: var(--slime-muted); font-size: var(--text-lg); }
 .how { margin: 22px 0 18px; }
 .how ol { padding-left: 22px; color: var(--slime-muted); }

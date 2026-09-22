@@ -512,7 +512,6 @@
     screenEl.innerHTML = `
       <section class="hero">
         <h1>Jev Yarn</h1>
-        <img class="logo" src="/icons/icon-512.png" alt="" width="128" height="128">
         <p class="tagline">Everyone writes the next line. Jev picks the winner.</p>
       </section>
       <section class="card stack">

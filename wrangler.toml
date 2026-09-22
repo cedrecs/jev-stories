@@ -31,7 +31,7 @@ enabled = true
 # The Discord app whose Activity runs the game inside Discord: its Application
 # ID, which is public. Room connections are accepted from its address,
 # <id>.discordsays.com. Empty means the game is not set up for Discord.
-DISCORD_CLIENT_ID = ""
+DISCORD_CLIENT_ID = "1551812885666332682"
 # Room settings are fixed per deployment. Uncomment a line to change a default
 # (values are clamped to the ranges in src/rules.js):
 # WRITING_SECONDS = "60"      # 30 to 120, per line
