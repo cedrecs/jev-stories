@@ -4,8 +4,11 @@ A party game inspired by Y.A.R.N.: everyone writes the next line of a shared
 story, and instead of a vote, **TypeSafe's Jev** picks the winner. Installable
 as a PWA, runs on Cloudflare Workers with one Durable Object per room.
 
-Live: https://jev-yarn.jevie.app (the website) and, inside Discord, as an
+Live: https://Jev-YARN.Jevie.app (the website) and, inside Discord, as an
 Activity served from https://yarn.jevie.app.
+
+> The version of the game on Discord is heavily filtered, because of Discord's
+> Content Policy. For maximum fun, visit the website.
 
 ## How a game plays
 
@@ -116,6 +119,9 @@ screen, 280 characters per line, 100 players per room. Override with `[vars]`
 in `wrangler.toml` (see the comments there) and redeploy.
 
 ## Discord
+
+The version of the game on Discord is heavily filtered, because of Discord's
+Content Policy. For maximum fun, visit the website.
 
 The game also runs inside Discord as an Activity, from the App Launcher in a
 server channel or group chat. The Discord version has no rooms: the call is
