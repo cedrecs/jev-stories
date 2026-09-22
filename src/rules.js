@@ -3,7 +3,7 @@
 
 // Bump when the snapshot or message protocol changes: clients that see a
 // different version in a snapshot reload themselves to pick up new code.
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 // Player icons. Stored as code points so the source stays plain ASCII; the
 // client carries the same list. A player may pick any of them, repeats allowed.
@@ -27,6 +27,13 @@ export const LENGTHS = {
   medium: { label: 'Medium', min: 7, max: 12 },
   long: { label: 'Long', min: 12, max: 18 },
 };
+
+// A story length key from the client, or medium. Only the keys above count:
+// a name such as "__proto__" or "constructor" would otherwise look up an
+// inherited property and make a story that never ends.
+export function normalizeLength(input) {
+  return typeof input === 'string' && Object.hasOwn(LENGTHS, input) ? input : 'medium';
+}
 
 // Each dimension becomes one Choice question over all candidate sentences.
 // Jev returns a probability per candidate; code mixes them with the weights.
@@ -384,10 +391,56 @@ export function chunk(arr, size) {
   return out;
 }
 
-// Collapse whitespace and strip control characters from player text.
+// Characters that print nothing yet change how text reads or compares:
+// controls, format characters (zero-width spaces and joiners, bidirectional
+// overrides, soft hyphens), private-use code points, and the few letters and
+// symbols that render as blank space.
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Co}\u{115F}\u{1160}\u{3164}\u{FFA0}\u{2800}]/gu;
+
+// Collapse whitespace, strip invisible characters and truncate player text.
+// The limit counts code points, so an emoji at the end is never cut in half.
 export function cleanText(text, maxLen) {
   if (typeof text !== 'string') return '';
-  // eslint-disable-next-line no-control-regex
-  const stripped = text.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
-  return stripped.replace(/\s+/g, ' ').trim().slice(0, maxLen);
+  const stripped = text.normalize('NFC').replace(/\s+/g, ' ').replace(INVISIBLE, '');
+  // A run of combining marks is capped at three, which is more than any real
+  // script stacks; piling them up is how text is made to spill over its
+  // neighbours.
+  const tidy = stripped.replace(/(\p{M}{3})\p{M}+/gu, '$1');
+  const collapsed = tidy.replace(/\s+/g, ' ').trim();
+  return Array.from(collapsed).slice(0, maxLen).join('').trim();
+}
+
+// A token bucket: `burst` messages at once, then `perSecond` steadily. The
+// clock can be injected for tests.
+export class RateLimiter {
+  constructor({ burst = 30, perSecond = 3 } = {}, clock = Date.now) {
+    this.burst = burst;
+    this.perSecond = perSecond;
+    this.clock = clock;
+    this.tokens = burst;
+    this.last = clock();
+  }
+
+  allow() {
+    const t = this.clock();
+    this.tokens = Math.min(this.burst, this.tokens + ((t - this.last) / 1000) * this.perSecond);
+    this.last = t;
+    if (this.tokens < 1) return false;
+    this.tokens -= 1;
+    return true;
+  }
+}
+
+// The key that groups connections from one network: the address itself for
+// IPv4, the /64 prefix for IPv6, where one household or device usually holds
+// a whole prefix. Null when the address is unknown (local development).
+export function ipKey(ip) {
+  if (typeof ip !== 'string' || !ip) return null;
+  if (!ip.includes(':')) return ip;
+  const [head, tail = ''] = ip.split('::');
+  const left = head ? head.split(':') : [];
+  const right = tail ? tail.split(':') : [];
+  const missing = Math.max(0, 8 - left.length - right.length);
+  const groups = [...left, ...Array(missing).fill('0'), ...right].map((g) => g.toLowerCase().replace(/^0+(?=.)/, ''));
+  return `${groups.slice(0, 4).join(':')}::/64`;
 }

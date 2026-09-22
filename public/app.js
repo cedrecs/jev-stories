@@ -8,6 +8,8 @@
     medium: { label: 'Medium', min: 7, max: 12 },
     long: { label: 'Long', min: 12, max: 18 },
   };
+  // Length settings by key; anything that is not a story length reads as medium.
+  const lengthInfo = (key) => (Object.hasOwn(LENGTHS, key) ? LENGTHS[key] : LENGTHS.medium);
   const DIMS = [
     { key: 'funny', label: 'Funny', help: 'Wit, absurdity, timing' },
     { key: 'continuity', label: 'Flows', help: 'Follows the story so far' },
@@ -142,6 +144,7 @@
     me: null,
     ws: null,
     want: false,
+    lastPong: 0,
     retries: 0,
     connLost: false,
     state: null,
@@ -197,9 +200,14 @@
     }
     app.ws = ws;
     ws.addEventListener('open', () => {
+      app.lastPong = Date.now();
       ws.send(JSON.stringify({ type: 'join', nick: app.nick, token: app.token, emoji: app.emoji }));
     });
     ws.addEventListener('message', (ev) => {
+      if (ev.data === 'pong') {
+        app.lastPong = Date.now();
+        return;
+      }
       if (typeof ev.data !== 'string' || ev.data[0] !== '{') return;
       let msg;
       try {
@@ -233,9 +241,30 @@
     }, delay);
   }
 
-  setInterval(() => {
-    if (app.ws && app.ws.readyState === WebSocket.OPEN) app.ws.send('ping');
-  }, 25000);
+  // The server answers every ping with a pong. A connection that has stopped
+  // answering (a phone that changed networks, say) is closed here, so the
+  // usual reconnect takes over instead of the game looking frozen.
+  const PING_MS = 25000;
+  const PONG_TIMEOUT_MS = 65000;
+  function checkLiveness() {
+    if (!app.ws || app.ws.readyState !== WebSocket.OPEN) return;
+    if (app.lastPong && Date.now() - app.lastPong > PONG_TIMEOUT_MS) {
+      app.ws.close();
+      return;
+    }
+    app.ws.send('ping');
+  }
+  setInterval(checkLiveness, PING_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !app.ws || app.ws.readyState !== WebSocket.OPEN) return;
+    // Back from the background: ask right away, and give up on a connection
+    // that does not answer within a few seconds.
+    const asked = Date.now();
+    app.ws.send('ping');
+    setTimeout(() => {
+      if (app.ws && app.ws.readyState === WebSocket.OPEN && app.lastPong < asked) app.ws.close();
+    }, 5000);
+  });
 
   function handleMessage(msg) {
     switch (msg.type) {
@@ -521,7 +550,7 @@
   function storyPanelHtml(s, highlightLast) {
     const st = s.story;
     if (!st) return '';
-    const len = LENGTHS[st.length] || LENGTHS.medium;
+    const len = lengthInfo(st.length);
     return `<section class="story-panel">
       <div class="theme-line"><span class="label">Theme</span><b>${esc(st.theme)}</b><span class="pill">${len.label}, ${len.min} to ${len.max} lines</span></div>
       ${storyListHtml(st, highlightLast)}
@@ -675,12 +704,12 @@
     const counts = res.tapCounts || [];
     const max = Math.max(0, ...counts);
     const favorite = max > 0 && counts[rank] === max;
-    const cls = ['result', rank === 0 ? 'winner' : '', own ? 'own' : 'tappable', tapped ? 'tapped' : ''].join(' ');
+    const cls = ['result', rank === 0 ? 'winner wobble' : '', own ? 'own' : 'tappable', tapped ? 'tapped' : ''].join(' ');
     const label = rank === 0 ? 'Jev picked' : `#${rank + 1}`;
     return `<article class="${cls}" ${own ? '' : `data-action="tap" data-index="${rank}"`} role="${own ? '' : 'button'}" tabindex="${own ? -1 : 0}" title="${
       own ? 'Your own line' : tapped ? 'Your pick. Tap again to clear it.' : 'Tap to make this your pick'
     }">
-      <div class="rank">${label}${own ? ' · yours' : ''}<span class="mypick" data-mypick ${tapped ? '' : 'hidden'}> · your pick</span></div>
+      <div class="rank"><span class="rank-label">${label}</span>${own ? ' · yours' : ''}<span class="mypick" data-mypick ${tapped ? '' : 'hidden'}> · your pick</span></div>
       <p class="text">${esc(row.text)}</p>
       <div class="meta"><span class="author">by ${av(row.authorEmoji)}${esc(row.authorNick)}</span><span class="share">${pct(row.share)}</span></div>
       ${dimsHtml(row)}
@@ -692,8 +721,10 @@
     const res = s.results || {};
     const top = res.top || [];
     const others = res.others || [];
+    // Only your own filtered line travels to you; the rest is a count.
     const filtered = res.filtered || [];
-    const mine = filtered.find((f) => f.authorId === s.youId);
+    const filteredCount = Number(res.filteredCount) || filtered.length;
+    const mine = filtered[0] || null;
     const hasWinner = Boolean(res.winnerId);
     const isSetter = s.story && s.story.setterId === s.youId;
     // The setter may end the story once it has a line, unless Jev is already ending it.
@@ -734,8 +765,8 @@
             : ''
         }
         ${
-          filtered.length
-            ? `<p class="hint" style="margin-top:10px">${filtered.length} ${filtered.length === 1 ? 'line was' : 'lines were'} filtered for this room.${
+          filteredCount
+            ? `<p class="hint" style="margin-top:10px">${filteredCount} ${filteredCount === 1 ? 'line was' : 'lines were'} filtered for this room.${
                 mine ? ` Yours was one of them (${esc((mine.flags || []).join(', '))}).` : ''
               }</p>`
             : ''
@@ -746,7 +777,7 @@
   }
 
   function storyText(st) {
-    const len = LENGTHS[st.length] || LENGTHS.medium;
+    const len = lengthInfo(st.length);
     const who = (emoji, nick) => `${emoji ? `${emoji} ` : ''}${nick}`;
     const lines = st.sentences.map((x, i) => `${i + 1}. ${x.text}  (${who(x.authorEmoji, x.authorNick)})`);
     const js = st.jevScore;
@@ -773,7 +804,7 @@
   function buildStoryEnd(s) {
     const st = s.lastStory;
     if (!st) return '<section class="card"><p>Loading the story…</p></section>';
-    const len = LENGTHS[st.length] || LENGTHS.medium;
+    const len = lengthInfo(st.length);
     return `
       <section class="card story-final">
         <div class="label">${len.label} · theme by ${av(st.setterEmoji)}${esc(st.setterNick)}</div>
@@ -918,10 +949,12 @@
     const setterId = s.story ? s.story.setterId : null;
     // The mix Jev uses right now: this story's sliders, else the room defaults.
     const weights = s.story && s.story.weights ? s.story.weights : s.learned;
-    // Under the pie, say who set this story's mix. No note for the room defaults.
-    const note = s.story
-      ? `<p class="muted small pie-note">Set by ${av(s.story.setterEmoji)}${esc(s.story.setterNick)} for this round.</p>`
-      : '';
+    // Under the pie, say who set this story's mix, once they have set it. No
+    // note for the room defaults or while the theme is still being chosen.
+    const note =
+      s.story && s.story.theme
+        ? `<p class="muted small pie-note">Set by ${av(s.story.setterEmoji)}${esc(s.story.setterNick)} for this round.</p>`
+        : '';
     $('#drawer-jev').innerHTML = pieHtml(weights) + note;
     // Your own row first, then everyone else from highest score to lowest.
     const me = s.players.find((p) => p.id === s.youId);

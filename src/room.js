@@ -7,7 +7,6 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import {
-  LENGTHS,
   RATINGS,
   LIMITS,
   TOP_N,
@@ -15,17 +14,34 @@ import {
   PROTOCOL_VERSION,
   defaultWeights,
   normalizeWeights,
+  normalizeLength,
   settingsFromEnv,
   learnFromTaps,
   nextSetter,
   cleanText,
   pickEmoji,
+  ipKey,
+  RateLimiter,
 } from './rules.js';
-import { judgeRound, candidateId, scoreStory } from './judge.js';
+import { judgeRound, candidateId, scoreStory, checkText, UNCHECKED } from './judge.js';
 
 const STORY_SCORE_ERROR = 'Jev could not score this story.';
+const JUDGE_ERROR = 'Jev could not judge this round. The round will replay.';
+const UNCHECKED_LABEL = 'could not be checked';
+
+// An error whose message is meant for the player. Any other error is logged
+// and the player sees a generic line instead of its text.
+class GameError extends Error {}
 
 const GRACE_MS = 60_000; // a dropped connection keeps its seat and score this long
+const JUDGE_WATCHDOG_MS = 90_000; // judging older than this (a restart mid-judge) is run again
+// Abuse limits per connection: the largest message that could be legitimate,
+// a token bucket, and how many dropped messages close the connection. One
+// network address may hold this many connections to a room.
+const MAX_MESSAGE_CHARS = 8192;
+const RATE_LIMIT = { burst: 30, perSecond: 3 };
+const STRIKES_TO_CLOSE = 60;
+const MAX_SOCKETS_PER_ADDRESS = 25;
 const EMPTY_ROOM_SLEEP_MS = 60 * 60_000; // an hour after everyone is gone, clear the table
 const MIN_RESUME_MS = 15_000; // when a paused phase resumes, give at least this long
 const BROADCAST_COALESCE_MS = 200; // bursts of updates are sent at most this often
@@ -51,9 +67,13 @@ export class Room extends DurableObject {
     // The player roster is large with 100 seats, so snapshots carry it only
     // when it changed since the last broadcast (joins, leaves, scores).
     this.rosterDirty = true;
+    // Per-connection abuse state (a token bucket and a strike count), and the
+    // connections whose nickname or theme Jev is still checking.
+    this.limits = new WeakMap();
+    this.busy = new WeakSet();
     this.ctx.blockConcurrencyWhile(async () => {
       this.room = (await this.ctx.storage.get('room')) || null;
-      if (this.room) this.migrate();
+      if (this.room) await this.migrate();
     });
     // Cheap keepalive that does not wake a hibernating object.
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
@@ -61,7 +81,7 @@ export class Room extends DurableObject {
 
   // Older persisted rooms get the fields newer code expects; settings always
   // follow the current deployment config.
-  migrate() {
+  async migrate() {
     const r = this.room;
     r.settings = settingsFromEnv(this.env);
     r.learned = normalizeWeights(r.learned);
@@ -74,6 +94,11 @@ export class Room extends DurableObject {
     for (const p of Object.values(r.players)) if (!p.emoji) p.emoji = pickEmoji(null, p.order);
     // A restart while Jev was scoring the last story leaves it pending forever.
     if (r.lastStory && r.lastStory.jevScore && r.lastStory.jevScore.pending) r.lastStory.jevScore = { error: STORY_SCORE_ERROR };
+    // A restart while Jev was judging: the watchdog alarm judges the round again.
+    if (r.phase === 'judging') {
+      if (!r.judgingSince) r.judgingSince = 0;
+      await this.scheduleAlarm();
+    }
   }
 
   rating() {
@@ -115,7 +140,8 @@ export class Room extends DurableObject {
       exists: true,
       code: this.room.code,
       phase: this.room.phase,
-      players: this.connectedPlayers().length,
+      // Counted from live connections, so a stale seat never shows as playing.
+      players: this.livePlayerIds().size,
       seats: Object.keys(this.room.players).length,
     };
   }
@@ -127,27 +153,103 @@ export class Room extends DurableObject {
       return new Response('Expected a WebSocket upgrade', { status: 426 });
     }
     if (!this.room) return new Response('Room not found', { status: 404 });
+    // One network address may hold only so many connections, so a single
+    // machine cannot fill a room with seats.
+    const address = ipKey(request.headers.get('CF-Connecting-IP'));
+    if (address) {
+      const same = this.ctx.getWebSockets().filter((s) => s.readyState === WebSocket.OPEN && (s.deserializeAttachment() || {}).address === address);
+      if (same.length >= MAX_SOCKETS_PER_ADDRESS) return new Response('Too many connections from this address', { status: 429 });
+    }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ playerId: null });
+    server.serializeAttachment({ playerId: null, address });
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // The attachment survives hibernation; patches keep its other fields.
+  setAttachment(ws, patch) {
+    ws.serializeAttachment({ ...(ws.deserializeAttachment() || {}), ...patch });
+  }
+
+  // Ids of the players who have an open connection right now.
+  livePlayerIds(except = null) {
+    const live = new Set();
+    for (const s of this.ctx.getWebSockets()) {
+      if (s === except || s.readyState !== WebSocket.OPEN) continue;
+      const a = s.deserializeAttachment() || {};
+      if (a.playerId && this.room.players[a.playerId]) live.add(a.playerId);
+    }
+    return live;
+  }
+
+  // Presence follows live connections: a seat whose connection is gone is
+  // disconnected and its grace period starts, whatever the saved flag says.
+  // This is what clears a seat left behind by a connection that never
+  // closed cleanly. Returns whether anything changed.
+  reconcilePresence(except = null) {
+    const live = this.livePlayerIds(except);
+    let changed = false;
+    for (const p of Object.values(this.room.players)) {
+      const on = live.has(p.id);
+      if (p.connected === on) continue;
+      p.connected = on;
+      if (!on) p.lastSeen = now();
+      changed = true;
+    }
+    if (changed) this.rosterDirty = true;
+    return changed;
   }
 
   async webSocketMessage(ws, raw) {
     if (!this.room) return this.safeSend(ws, { type: 'error', message: 'This room is not available.', fatal: true });
-    let msg;
+    // Only a small text frame can be a real message; anything else is dropped
+    // before it is even parsed.
+    if (typeof raw !== 'string') return this.drop(ws, 1003, 'Text frames only');
+    if (raw.length > MAX_MESSAGE_CHARS) return this.drop(ws, 1009, 'Message too big');
+    const verdict = this.allow(ws);
+    if (verdict === 'close') return this.drop(ws, 1008, 'Too many messages');
+    if (verdict !== 'ok') return;
+    let msg = null;
     try {
-      msg = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw));
+      msg = JSON.parse(raw);
     } catch {
+      /* not JSON */
+    }
+    if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.type !== 'string') {
       return this.safeSend(ws, { type: 'error', message: 'Bad message' });
     }
     try {
       await this.handle(ws, msg);
     } catch (err) {
+      if (err instanceof GameError) return this.safeSend(ws, { type: 'error', message: err.message });
       console.error('handle failed', err);
-      this.safeSend(ws, { type: 'error', message: err.message || 'Something went wrong' });
+      this.safeSend(ws, { type: 'error', message: 'Something went wrong' });
     }
+  }
+
+  // Token bucket per connection. Over the limit a message is dropped without
+  // a reply; a connection that keeps flooding is closed.
+  allow(ws) {
+    let entry = this.limits.get(ws);
+    if (!entry) {
+      entry = { limiter: new RateLimiter(RATE_LIMIT), strikes: 0 };
+      this.limits.set(ws, entry);
+    }
+    if (entry.limiter.allow()) return 'ok';
+    entry.strikes += 1;
+    return entry.strikes >= STRIKES_TO_CLOSE ? 'close' : 'drop';
+  }
+
+  // Closes a connection that broke the rules and frees its seat like any
+  // other lost connection.
+  async drop(ws, code, reason) {
+    try {
+      ws.close(code, reason);
+    } catch {
+      /* already closed */
+    }
+    await this.onSocketGone(ws);
   }
 
   async webSocketClose(ws, code, reason) {
@@ -177,6 +279,7 @@ export class Room extends DurableObject {
     if (stillOpen) return;
     p.connected = false;
     p.lastSeen = now();
+    this.reconcilePresence(ws);
     if (this.connectedPlayers().length === 0) {
       this.room.emptySince = now();
       // The last person has gone (closed the tab or dropped): the next people
@@ -202,12 +305,23 @@ export class Room extends DurableObject {
         return this.leave(ws, player);
 
       case 'theme': {
-        if (r.phase !== 'theme' || !r.story) throw new Error('Nobody is choosing a theme right now.');
-        if (player.id !== r.story.setterId) throw new Error('Only the theme setter can set the theme.');
+        if (this.busy.has(ws)) return;
+        if (r.phase !== 'theme' || !r.story) throw new GameError('Nobody is choosing a theme right now.');
+        if (player.id !== r.story.setterId) throw new GameError('Only the theme setter can set the theme.');
         const theme = cleanText(msg.theme, LIMITS.theme);
-        if (!theme) throw new Error('Write a theme first.');
+        if (!theme) throw new GameError('Write a theme first.');
+        this.busy.add(ws);
+        let bad;
+        try {
+          bad = await this.flagged(theme);
+        } finally {
+          this.busy.delete(ws);
+        }
+        if (bad) throw new GameError('Pick a different theme.');
+        // The room may have moved on while Jev was checking.
+        if (r.phase !== 'theme' || !r.story || player.id !== r.story.setterId) throw new GameError('Nobody is choosing a theme right now.');
         r.story.theme = theme;
-        r.story.length = LENGTHS[msg.length] ? msg.length : 'medium';
+        r.story.length = normalizeLength(msg.length);
         if (msg.weights) r.story.weights = normalizeWeights(msg.weights);
         await this.beginRound(false);
         return;
@@ -215,14 +329,14 @@ export class Room extends DurableObject {
 
       case 'weights': {
         if (!r.story) return;
-        if (player.id !== r.story.setterId) throw new Error('Only the theme setter can tune Jev this round.');
+        if (player.id !== r.story.setterId) throw new GameError('Only the theme setter can tune Jev this round.');
         r.story.weights = normalizeWeights(msg.weights);
         await this.commit();
         return;
       }
 
       case 'sentence': {
-        if (r.phase !== 'writing' || !r.round) throw new Error('Writing is closed for this round.');
+        if (r.phase !== 'writing' || !r.round) throw new GameError('Writing is closed for this round.');
         const text = cleanText(msg.text, r.settings.maxSentenceChars);
         if (!text) {
           delete r.round.submissions[player.id];
@@ -242,7 +356,7 @@ export class Room extends DurableObject {
         // A pick can be changed any time before the reveal ends; only the
         // final pick counts. Tapping the current pick again clears it, and
         // index null clears it explicitly.
-        if (r.phase !== 'reveal' || !r.results || !r.results.top) throw new Error('Nothing to pick right now.');
+        if (r.phase !== 'reveal' || !r.results || !r.results.top) throw new GameError('Nothing to pick right now.');
         if (msg.index === null || msg.index === undefined) {
           delete r.results.taps[player.id];
           await this.commit();
@@ -250,8 +364,8 @@ export class Room extends DurableObject {
         }
         const idx = Number(msg.index);
         const line = r.results.top[idx];
-        if (!line) throw new Error('That line is not in the top five.');
-        if (line.authorId === player.id) throw new Error('You cannot pick your own line.');
+        if (!line) throw new GameError('That line is not in the top five.');
+        if (line.authorId === player.id) throw new GameError('You cannot pick your own line.');
         if (r.results.taps[player.id] === idx) delete r.results.taps[player.id];
         else r.results.taps[player.id] = idx;
         await this.commit();
@@ -260,13 +374,13 @@ export class Room extends DurableObject {
 
       case 'skip': {
         if (r.phase !== 'reveal') return;
-        if (!r.story || player.id !== r.story.setterId) throw new Error('Only the theme setter can skip ahead.');
+        if (!r.story || player.id !== r.story.setterId) throw new GameError('Only the theme setter can skip ahead.');
         await this.finishReveal();
         return;
       }
 
       case 'end-story': {
-        if (!r.story || player.id !== r.story.setterId) throw new Error('Only the theme setter can end the story.');
+        if (!r.story || player.id !== r.story.setterId) throw new GameError('Only the theme setter can end the story.');
         if (r.phase === 'reveal') {
           await this.finishReveal({ endNow: true });
         } else if (r.phase === 'writing') {
@@ -274,28 +388,74 @@ export class Room extends DurableObject {
           // leaving out the lines not yet judged.
           await this.endStory('setter');
         } else {
-          throw new Error('The story can be ended once a round has been revealed.');
+          throw new GameError('The story can be ended once a round has been revealed.');
         }
         return;
       }
 
       default:
-        throw new Error(`Unknown message type: ${msg.type}`);
+        throw new GameError('Unknown message');
     }
+  }
+
+  // Jev checks a nickname or a theme against the room's filters. When Jev
+  // cannot be reached the text goes through unchecked, so an outage never
+  // locks anyone out of a room.
+  async flagged(text) {
+    try {
+      const { flags } = await checkText(this.env, { text, filters: this.rating().filters });
+      return flags.length > 0;
+    } catch (err) {
+      console.error('text check failed', err);
+      return false;
+    }
+  }
+
+  // The words a player sees for a filter that caught their line.
+  filterLabel(key) {
+    if (key === UNCHECKED) return UNCHECKED_LABEL;
+    const f = this.rating().filters.find((x) => x.key === key);
+    return f ? f.label : key;
   }
 
   async join(ws, msg) {
     const r = this.room;
+    if (this.busy.has(ws)) return;
+    const att = ws.deserializeAttachment() || {};
+    const seated = att.playerId ? r.players[att.playerId] || null : null;
     let player = null;
     if (typeof msg.token === 'string' && msg.token) {
       player = Object.values(r.players).find((p) => p.token === msg.token) || null;
     }
+    if (seated && player && player.id === seated.id) {
+      // Already in this seat: just confirm it.
+      this.safeSend(ws, { type: 'joined', playerId: player.id, token: player.token, nick: player.nick, code: r.code });
+      this.broadcastSoon();
+      return;
+    }
+    // A connection holds one seat. Joining again as someone else gives the
+    // old seat up at once, so it never lingers as a phantom player.
+    if (seated) {
+      this.dropSeat(seated);
+      await this.commit();
+    }
     const requestedNick = cleanText(msg.nick, LIMITS.nick) || 'Anon';
 
     if (!player) {
-      if (Object.keys(r.players).length >= r.settings.maxPlayers) {
-        return this.safeSend(ws, { type: 'error', message: 'This room is full right now. Try another room.', fatal: true });
+      const full = () => Object.keys(r.players).length >= r.settings.maxPlayers;
+      const refuse = (message) => this.safeSend(ws, { type: 'error', message, fatal: true });
+      if (full()) return refuse('This room is full right now. Try another room.');
+      this.busy.add(ws);
+      let bad;
+      try {
+        bad = requestedNick !== 'Anon' && (await this.flagged(requestedNick));
+      } finally {
+        this.busy.delete(ws);
       }
+      if (bad) return refuse('Pick a different nickname.');
+      // The connection may have gone, or the room filled up, while Jev was checking.
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (full()) return refuse('This room is full right now. Try another room.');
       // Nobody else is connected: whatever story was left behind is abandoned
       // (for example one paused before this rule existed), so a newcomer starts
       // fresh instead of landing in the middle of it.
@@ -333,28 +493,34 @@ export class Room extends DurableObject {
     }
     r.emptySince = null;
     this.rosterDirty = true;
-    ws.serializeAttachment({ playerId: player.id });
+    this.setAttachment(ws, { playerId: player.id });
     this.safeSend(ws, { type: 'joined', playerId: player.id, token: player.token, nick: player.nick, code: r.code });
     await this.afterPlayerChange();
   }
 
   async leave(ws, player) {
+    this.dropSeat(player);
+    try {
+      this.setAttachment(ws, { playerId: null });
+      this.safeSend(ws, { type: 'left' });
+      ws.close(1000, 'left');
+    } catch {
+      /* ignore */
+    }
+    if (this.connectedPlayers().length === 0) this.room.emptySince = now();
+    await this.afterPlayerChange();
+  }
+
+  // Removes a seat outright, with its line and pick for the current round:
+  // a Leave, or a connection that took another seat.
+  dropSeat(player) {
     const r = this.room;
     delete r.players[player.id];
     if (r.round) delete r.round.submissions[player.id];
     if (r.results && r.results.taps) delete r.results.taps[player.id];
     // The last person in the room has left: the next arrivals get a fresh story.
     if (this.connectedPlayers().length === 0) this.resetStory();
-    try {
-      ws.serializeAttachment({ playerId: null });
-      this.safeSend(ws, { type: 'left' });
-      ws.close(1000, 'left');
-    } catch {
-      /* ignore */
-    }
-    if (this.connectedPlayers().length === 0) r.emptySince = now();
     this.rosterDirty = true;
-    await this.afterPlayerChange();
   }
 
   uniqueNick(nick) {
@@ -377,7 +543,11 @@ export class Room extends DurableObject {
 
   async afterPlayerChange() {
     const r = this.room;
+    this.reconcilePresence();
     this.ensureSetter();
+    // A paused room resumes first, so that a round everyone has already
+    // written can close right away instead of staying paused.
+    await this.checkPause();
     // Everyone remaining has already written: close the round early.
     if (r.phase === 'writing' && r.round) {
       const connected = this.connectedPlayers();
@@ -386,7 +556,6 @@ export class Room extends DurableObject {
         return;
       }
     }
-    await this.checkPause();
     await this.commit();
   }
 
@@ -415,29 +584,37 @@ export class Room extends DurableObject {
     return true;
   }
 
-  // Below two connected players the clock stops; it resumes when someone joins.
+  // Below two connected players the clock stops; it resumes when someone
+  // joins. The first resume of a phase tops its clock up to MIN_RESUME_MS so
+  // the returning player gets a moment; later resumes of the same phase get
+  // only what was left, so a connection that keeps dropping and returning
+  // cannot stretch a phase forever.
   async checkPause() {
     const r = this.room;
     const count = this.connectedPlayers().length;
     if (r.phase !== 'paused' && ACTIVE_PHASES.has(r.phase) && count < 2) {
-      r.paused = { phase: r.phase, remainingMs: r.deadline ? Math.max(0, r.deadline - now()) : 0 };
+      r.paused = { phase: r.phase, remainingMs: r.deadline ? Math.max(0, r.deadline - now()) : 0, key: this.phaseKey() };
       r.phase = 'paused';
       r.deadline = null;
     } else if (r.phase === 'paused' && count >= 2) {
-      const { phase, remainingMs } = r.paused || { phase: 'theme', remainingMs: 0 };
+      const { phase, remainingMs, key } = r.paused || { phase: 'theme', remainingMs: 0 };
       r.paused = null;
-      if (phase === 'theme') {
-        if (!r.story || !r.players[r.story.setterId]?.connected) {
-          await this.beginStory(false);
-          return;
-        }
-        r.phase = 'theme';
-        r.deadline = now() + r.settings.themeSeconds * 1000;
+      if (phase === 'theme' && (!r.story || !r.players[r.story.setterId]?.connected)) {
+        await this.beginStory(false);
         return;
       }
+      const first = !key || r.resumedKey !== key;
+      if (key) r.resumedKey = key;
       r.phase = phase;
-      r.deadline = now() + Math.max(remainingMs, MIN_RESUME_MS);
+      r.deadline = now() + (first ? Math.max(remainingMs, MIN_RESUME_MS) : remainingMs);
     }
+  }
+
+  // Names the phase instance being paused, so a later resume of the same
+  // phase is recognised as such.
+  phaseKey() {
+    const r = this.room;
+    return [r.phase, r.story?.index, r.round?.index, r.round?.attempts, r.results?.judgedAt, r.lastStory?.endedAt].join('|');
   }
 
   // Everyone has gone: drop the abandoned story so the next players choose a
@@ -505,15 +682,23 @@ export class Room extends DurableObject {
     };
     r.phase = 'writing';
     r.deadline = now() + r.settings.writingSeconds * 1000;
+    await this.checkPause();
     await this.commit();
+  }
+
+  // The lines written this round by players who are still in the room.
+  roundCandidates() {
+    const r = this.room;
+    if (!r.round) return [];
+    return Object.entries(r.round.submissions)
+      .filter(([pid, s]) => r.players[pid] && s.text)
+      .map(([pid, s]) => ({ playerId: pid, text: s.text }));
   }
 
   async closeWriting() {
     const r = this.room;
     if (r.phase !== 'writing' || this.judging) return;
-    const candidates = Object.entries(r.round.submissions)
-      .filter(([pid, s]) => r.players[pid] && s.text)
-      .map(([pid, s]) => ({ playerId: pid, text: s.text }));
+    const candidates = this.roundCandidates();
 
     if (candidates.length === 0) {
       if (r.round.attempts < 1) {
@@ -540,6 +725,23 @@ export class Room extends DurableObject {
 
     r.phase = 'judging';
     r.deadline = null;
+    r.judgingSince = now();
+    await this.commit();
+    await this.judge(candidates);
+  }
+
+  // Jev never answered, usually because of a restart mid-judge: the round is
+  // judged again from the lines it still has.
+  async rejudge() {
+    const r = this.room;
+    const candidates = this.roundCandidates();
+    if (!candidates.length) {
+      // Everyone who wrote has gone: close the round as one with no lines.
+      r.phase = 'writing';
+      await this.closeWriting();
+      return;
+    }
+    r.judgingSince = now();
     await this.commit();
     await this.judge(candidates);
   }
@@ -589,7 +791,7 @@ export class Room extends DurableObject {
         .slice(TOP_N, TOP_N + OTHERS_N)
         .map((x) => ({ text: x.text, authorNick: x.authorNick, authorEmoji: x.authorEmoji, share: x.share }));
       const othersTotal = Math.max(0, eligible.length - TOP_N);
-      const filtered = rows.filter((x) => x.filtered).map((x) => ({ authorId: x.authorId, text: x.text, flags: x.flags }));
+      const filtered = rows.filter((x) => x.filtered).map((x) => ({ authorId: x.authorId, text: x.text, flags: x.flags.map((k) => this.filterLabel(k)) }));
       const winner = top[0] || null;
       outcome = {
         roundIndex: r.round.index,
@@ -623,7 +825,7 @@ export class Room extends DurableObject {
         winnerId: null,
         ends: false,
         ms: now() - t0,
-        error: `Jev could not judge this round (${err.message || 'unknown error'}). The round will replay.`,
+        error: JUDGE_ERROR,
         judgedAt: now(),
       };
     } finally {
@@ -652,6 +854,7 @@ export class Room extends DurableObject {
     }
     r.phase = 'reveal';
     r.deadline = now() + r.settings.revealSeconds * 1000;
+    await this.checkPause();
     await this.commit();
   }
 
@@ -707,6 +910,7 @@ export class Room extends DurableObject {
     r.phase = 'storyEnd';
     r.deadline = now() + r.settings.storyEndSeconds * 1000;
     r.lastStory.jevScore = { pending: true };
+    await this.checkPause();
     await this.commit();
     await this.scoreLastStory();
   }
@@ -738,8 +942,9 @@ export class Room extends DurableObject {
     const r = this.room;
     const t = now();
 
-    // Grace period over: the seat and its score are gone.
-    let changed = false;
+    // Presence follows live connections; then every grace period that has
+    // run out frees its seat and score.
+    let changed = this.reconcilePresence();
     for (const p of Object.values(r.players)) {
       if (!p.connected && t - p.lastSeen >= GRACE_MS) {
         delete r.players[p.id];
@@ -764,6 +969,12 @@ export class Room extends DurableObject {
       });
       await this.save();
       await this.ctx.storage.deleteAlarm();
+      return;
+    }
+
+    // Jev never answered (a restart mid-judge): judge the round again.
+    if (r.phase === 'judging' && !this.judging && t >= (r.judgingSince || 0) + JUDGE_WATCHDOG_MS - 25) {
+      await this.rejudge();
       return;
     }
 
@@ -799,6 +1010,7 @@ export class Room extends DurableObject {
     if (!r) return;
     const times = [];
     if (r.deadline) times.push(r.deadline);
+    if (r.phase === 'judging') times.push((r.judgingSince || 0) + JUDGE_WATCHDOG_MS);
     for (const p of Object.values(r.players)) {
       if (!p.connected) times.push(p.lastSeen + GRACE_MS);
     }
@@ -888,8 +1100,9 @@ export class Room extends DurableObject {
     if (r.results) {
       const tapCounts = new Array((r.results.top || []).length).fill(0);
       for (const idx of Object.values(r.results.taps || {})) if (tapCounts[idx] !== undefined) tapCounts[idx] += 1;
-      const { taps, ...rest } = r.results;
-      results = { ...rest, tapCounts };
+      // Filtered lines travel per player (see personalize); here only their count.
+      const { taps, filtered, ...rest } = r.results;
+      results = { ...rest, tapCounts, filteredCount: (filtered || []).length };
     }
     return {
       type: 'state',
@@ -914,17 +1127,19 @@ export class Room extends DurableObject {
     };
   }
 
-  // Per-player fields: own draft, own tap, and the text of own filtered line.
+  // Per-player fields: own draft, own tap, and own filtered line with the
+  // reasons. Nobody learns whose other lines were filtered, or why.
   personalize(base, playerId) {
     const r = this.room;
     const out = { ...base, youId: playerId };
     if (base.round) out.round = { ...base.round, mine: r.round?.submissions[playerId]?.text || '' };
     if (base.results) {
       const myTap = r.results && r.results.taps ? r.results.taps[playerId] : undefined;
+      const mine = (r.results && r.results.filtered ? r.results.filtered : []).filter((f) => f.authorId === playerId);
       out.results = {
         ...base.results,
         myTap: myTap === undefined ? null : myTap,
-        filtered: (base.results.filtered || []).map((f) => (f.authorId === playerId ? f : { ...f, text: null })),
+        filtered: mine.map((f) => ({ text: f.text, flags: f.flags })),
       };
     }
     return JSON.stringify(out);

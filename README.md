@@ -51,7 +51,9 @@ Live: https://jev-stories.jev-stories.workers.dev
 | Absolute Degenerates | `/absolute-degenerates` | nothing extra |
 
 Hate and harassment are filtered out in every room. A filtered line cannot
-win. Its author sees why; nobody else sees the line. The presets live in
+win. Its author sees why; nobody else sees the line, or whose it was. A line
+Jev could not check cannot win either. Nicknames and themes go through the
+same filters and are refused when they fail. The presets live in
 `src/rules.js` (`RATINGS`). Links from before the rooms were renamed,
 `/everyone`, `/teen`, `/mature` and `/adult`, still open the same rooms.
 
@@ -97,6 +99,16 @@ Settings are fixed per deployment, not per room or host. Defaults: 60 s to
 write a line (cap 120), 90 s to set a theme, 30 s reveal, 30 s story-end
 screen, 280 characters per line, 100 players per room. Override with `[vars]`
 in `wrangler.toml` (see the comments there) and redeploy.
+
+## Limits and headers
+
+Each connection holds one seat, may send messages of up to 8 KB at up to
+three a second (bursts of 30), and is closed if it keeps flooding. One network
+address may hold 25 connections to a room. Room connections are accepted only
+from the site's own pages. Every response carries a Content-Security-Policy
+and the usual security headers (`src/headers.js`). The room list is cached for
+two seconds. A round Jev never answered, after a restart mid-judge, is judged
+again after 90 seconds.
 
 ## Deploy to Cloudflare
 

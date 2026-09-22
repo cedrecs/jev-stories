@@ -22,6 +22,8 @@ import {
 
 export const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
 export const MODEL = 'jev-latest';
+// The flag a line gets when Jev's reply lacked one of its room-filter answers.
+export const UNCHECKED = 'unchecked';
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 // 0 -> A, 25 -> Z, 26 -> AA ...
@@ -108,8 +110,15 @@ export function scoreResults({ answers, candidates, weights, storyLength, length
     const closure = Number(answers[`end_${c.id}`]?.noul) || 0;
     const flags = [];
     for (const f of filters || []) {
-      const p = Number(answers[`mod_${f.key}_${c.id}`]?.noul) || 0;
-      if (p > MODERATION_THRESHOLD) flags.push(f.key);
+      const a = answers[`mod_${f.key}_${c.id}`];
+      const p = a ? Number(a.noul) : NaN;
+      // No answer means the line was never checked against this filter, and
+      // an unchecked line cannot win: the room's promise fails closed.
+      if (!Number.isFinite(p)) {
+        if (!flags.includes(UNCHECKED)) flags.push(UNCHECKED);
+      } else if (p > MODERATION_THRESHOLD) {
+        flags.push(f.key);
+      }
     }
     return { id: c.id, composite, dims, closure, flags, filtered: flags.length > 0 };
   });
@@ -265,6 +274,46 @@ export async function scoreStory(env, { theme, sentences, weights }) {
   const summary = summarizeStoryScore(response.answers || {}, weights);
   if (!summary) throw new Error('Jev returned an incomplete story score');
   return summary;
+}
+
+// ---------------------------------------------------------------------------
+// Text checks: a nickname or a theme against the room's filters, one Noul
+// per filter, so what every player sees follows the same rules as the lines.
+
+export function buildTextCheckRequest({ text, filters }) {
+  const questions = {};
+  for (const f of filters || []) {
+    questions[`mod_${f.key}`] = { type: 'noul', instructions: `${f.question} Sentence: "${text}"`, criteria: f.criteria };
+  }
+  return {
+    state: {
+      game: 'A party game: players pick a nickname and write themes for a shared comic story. One of those texts is below.',
+      text,
+    },
+    model: MODEL,
+    questions,
+  };
+}
+
+// Returns the keys of the filters that fire on the text. Throws when the
+// judge cannot be reached, so the caller decides what an unchecked text means.
+export async function checkText(env, { text, filters }, { timeoutMs = 6000 } = {}) {
+  const request = buildTextCheckRequest({ text, filters });
+  if (!Object.keys(request.questions).length) return { flags: [] };
+  let response;
+  if (env.TYPESAFE_API_KEY) {
+    response = await callTypeSafe(env.TYPESAFE_API_KEY, request, { retries: 0, timeoutMs });
+  } else if (env.MOCK_JUDGE === '1') {
+    response = mockAnswers(request);
+  } else {
+    throw new Error('The judge is not configured: set the TYPESAFE_API_KEY secret.');
+  }
+  const answers = response.answers || {};
+  const flags = [];
+  for (const f of filters) {
+    if (Number(answers[`mod_${f.key}`]?.noul) > MODERATION_THRESHOLD) flags.push(f.key);
+  }
+  return { flags };
 }
 
 // Entry point used by the room. Returns { ranked, winner, ends, endReason, model, usage, requests }.
