@@ -214,16 +214,21 @@ export function resize(img, W, H) {
 }
 
 // Logo scaled to `scale` of a size x size canvas, centred, over `bg` (or clear).
-function place(logo, size, scale, bg = null) {
-  const inner = Math.round(size * scale);
+// The logo centred on a canvas `size` wide and `height` tall (square unless a
+// height is given), at `scale` of the shorter side, over an optional background.
+function place(logo, size, scale, bg = null, height = size) {
+  const W = size;
+  const H = height;
+  const inner = Math.round(Math.min(W, H) * scale);
   const art = resize(logo, inner, inner);
-  const rgba = Buffer.alloc(size * size * 4);
-  if (bg) for (let i = 0; i < size * size; i++) rgba.set(bg, i * 4);
-  const off = Math.floor((size - inner) / 2);
+  const rgba = Buffer.alloc(W * H * 4);
+  if (bg) for (let i = 0; i < W * H; i++) rgba.set(bg, i * 4);
+  const offX = Math.floor((W - inner) / 2);
+  const offY = Math.floor((H - inner) / 2);
   for (let y = 0; y < inner; y++) {
     for (let x = 0; x < inner; x++) {
       const s = (y * inner + x) * 4;
-      const d = ((y + off) * size + (x + off)) * 4;
+      const d = ((y + offY) * W + (x + offX)) * 4;
       const a = art.rgba[s + 3] / 255;
       const da = rgba[d + 3] / 255;
       const oa = a + da * (1 - a);
@@ -234,7 +239,7 @@ function place(logo, size, scale, bg = null) {
       rgba[d + 3] = Math.round(oa * 255);
     }
   }
-  return { w: size, h: size, rgba };
+  return { w: W, h: H, rgba };
 }
 
 // -------------------------------------------------------------------- main
@@ -260,6 +265,8 @@ const targets = [
   ['icon-512-maskable.png', place(logo, 512, 0.62, BACKGROUND)],
   // iOS does not keep transparency and rounds the corners itself.
   ['apple-touch-icon.png', place(logo, 180, 0.86, BACKGROUND)],
+  // Link previews (Discord, iMessage, Slack...): the large-image card size.
+  ['og-image.png', place(logo, 1200, 0.78, BACKGROUND, 630)],
 ];
 for (const [name, img] of targets) {
   const png = encodePNG(img);

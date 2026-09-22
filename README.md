@@ -89,8 +89,10 @@ src/index.js         Worker: room list, WebSocket hand-off, static assets
 src/room.js          Durable Object: players, phases, timers (alarms), sockets
 src/judge.js         TypeSafe request builder, scoring, transport, mock
 src/rules.js         Rooms, dimensions, filters, learning rule, validation
+src/headers.js       Security headers and the Content-Security-Policy
+src/preview.js       Link previews: absolute URLs and a card per room
 public/              PWA: index.html, app.js, styles.css, sw.js, manifest, icons
-assets/              logo-source.png, the master logo every icon is built from
+assets/              logo-source.png, the master logo every icon and the preview image come from
 scripts/             make-icons.mjs (icons), load-test.mjs (synthetic players)
 tests/               node --test suites
 ```

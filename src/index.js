@@ -10,6 +10,7 @@
 import { Room } from './room.js';
 import { RATINGS, RATING_CODES } from './rules.js';
 import { securityHeaders, withHeaders } from './headers.js';
+import { withPreview } from './preview.js';
 
 export { Room };
 
@@ -100,7 +101,9 @@ async function route(request, env, url) {
   if (path.startsWith('/api/') || path.startsWith('/ws/')) {
     return json({ error: 'Not found' }, 404);
   }
-  return env.ASSETS.fetch(request);
+  // Pages get their link-preview tags filled in on the way out.
+  const asset = await env.ASSETS.fetch(request);
+  return request.method === 'GET' ? withPreview(asset, url) : asset;
 }
 
 export default {

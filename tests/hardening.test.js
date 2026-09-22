@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { cleanText, normalizeLength, RateLimiter, ipKey, LENGTHS, RATINGS, DIMENSIONS, normalizeWeights } from '../src/rules.js';
 import { scoreResults, UNCHECKED, buildTextCheckRequest, checkText } from '../src/judge.js';
 import { securityHeaders, withHeaders } from '../src/headers.js';
+import { linkPreview } from '../src/preview.js';
 
 test('cleanText strips invisible and bidirectional characters and counts code points', () => {
   const zwsp = String.fromCodePoint(0x200b);
@@ -120,4 +121,19 @@ test('security headers: a strict policy, the room socket on this host, HSTS only
   assert.equal(res.status, 201);
   assert.equal(res.headers.get('Content-Type'), 'text/plain', 'existing headers survive');
   assert.equal(res.headers.get('X-Frame-Options'), 'DENY');
+});
+
+test('link previews: the game card at the root, a card per room, absolute URLs', () => {
+  const home = linkPreview(new URL('https://jev-stories.jev-stories.workers.dev/'));
+  assert.equal(home.title, null, 'the page keeps its own title');
+  assert.equal(home.url, 'https://jev-stories.jev-stories.workers.dev/');
+  assert.equal(home.image, 'https://jev-stories.jev-stories.workers.dev/icons/og-image.png');
+  const room = linkPreview(new URL('https://jev-stories.jev-stories.workers.dev/safe-for-everyone'));
+  assert.equal(room.title, 'Join Safe for Everyone');
+  assert.equal(room.tagline, 'Clean fun for all ages');
+  assert.equal(room.url, 'https://jev-stories.jev-stories.workers.dev/safe-for-everyone');
+  const old = linkPreview(new URL('https://example.test/teen/'));
+  assert.equal(old.title, 'Join Moderated for Teens', 'old slugs get the room card');
+  assert.equal(old.url, 'https://example.test/moderated-for-teens', 'and point at the current link');
+  assert.equal(linkPreview(new URL('https://example.test/nope')).title, null);
 });
