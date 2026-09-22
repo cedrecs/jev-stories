@@ -42,7 +42,10 @@ self.addEventListener('fetch', (event) => {
 
   // Network first for everything: the game needs a live connection anyway, so
   // fresh code always wins. The cache only serves the shell when offline.
-  const cacheKey = req.mode === 'navigate' ? '/index.html' : req;
+  // Every game address (/, a room link) shares that one shell; the terms and
+  // privacy pages are kept under their own addresses so they never replace it.
+  const ownPage = /^\/(terms|privacy)(\.html)?$/.test(url.pathname);
+  const cacheKey = req.mode === 'navigate' && !ownPage ? '/index.html' : req;
   event.respondWith(
     fetch(req)
       .then((res) => {

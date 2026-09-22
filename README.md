@@ -124,6 +124,13 @@ it). The page loads it only inside Discord. The two fonts are served from
 `public/fonts` (SIL Open Font License), because Discord blocks outside font
 hosts.
 
+## Terms and privacy
+
+The Terms of Service and the Privacy Policy live at `/terms` and `/privacy`
+(`public/terms.html`, `public/privacy.html`) and are linked from the bottom of
+the home page. The Discord app's portal points at the same two addresses. If
+what the game stores or sends anywhere changes, update the Privacy Policy.
+
 ## Limits and headers
 
 Each connection holds one seat, may send messages of up to 8 KB at up to

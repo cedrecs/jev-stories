@@ -533,7 +533,8 @@
           <li><b>Tap your favorite.</b> Taps never change the pick, but they teach Jev what the room enjoys.</li>
           <li><b>Jev also decides when the story is done, and scores it.</b> Then the next player sets a theme, for as long as two of you are here.</li>
         </ol>
-      </section>`;
+      </section>
+      ${DISCORD ? '' : '<p class="legal-links"><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></p>'}`;
   }
 
   // The icon itself is the control: each tap moves to the next one and the
