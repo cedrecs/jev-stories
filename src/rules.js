@@ -230,9 +230,8 @@ export const RATINGS = {
     filters: [],
   },
   // The Discord version has no rooms to choose from: the call is the room, and
-  // each call gets one game with this rating. Discord lists only apps suitable
-  // for ages 13 and up, so it uses the Moderated for Teens filters. It never
-  // appears on the website.
+  // each call gets one game with this rating. Its filters are set below. It
+  // never appears on the website.
   D: {
     code: 'D',
     label: 'Jev Yarn',
@@ -242,7 +241,25 @@ export const RATINGS = {
     discordOnly: true,
   },
 };
-RATINGS.D.filters = RATINGS.T.filters;
+
+// Discord lists an app only if its content has none of what Discord calls
+// adult content: sexually explicit material, violent content, drugs, alcohol,
+// firearms and other regulated goods, and gambling (the App Discovery Content
+// Requirements Policy, as of September 2026). So the call game takes Safe for
+// Everyone's violence and sexual-content filters, Moderated for Teens'
+// profanity filter (Discord does not rule out mild swearing), a filter of its
+// own for drugs, alcohol, tobacco, guns and gambling, and the hate filter.
+const REGULATED = {
+  key: 'regulated',
+  label: 'drugs, alcohol, tobacco, guns and gambling',
+  question: 'Does this sentence involve drugs, alcohol, tobacco, guns or gambling?',
+  criteria: {
+    true: 'Drug use, drinking alcohol or being drunk, smoking or vaping, guns, ammunition, explosives or tactical gear, or betting and gambling',
+    false: 'None of these; everyday things such as medicine taken as directed, coffee or soft drinks are fine',
+  },
+};
+const filterOf = (code, key) => RATINGS[code].filters.find((f) => f.key === key);
+RATINGS.D.filters = [filterOf('E', 'violence'), filterOf('E', 'sexual'), filterOf('T', 'profanity'), REGULATED, HATE];
 export const DISCORD_CODE = 'D';
 // The website's four rooms, in order.
 export const RATING_CODES = Object.keys(RATINGS).filter((code) => !RATINGS[code].discordOnly);

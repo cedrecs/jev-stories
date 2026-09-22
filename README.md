@@ -110,8 +110,11 @@ in `wrangler.toml` (see the comments there) and redeploy.
 The game also runs inside Discord as an Activity, from the App Launcher in a
 server channel or group chat. The Discord version has no rooms: the call is
 the room. Each call (Activity instance) plays one private game (code `D`)
-with the Moderated for Teens filters, so the app can be listed in Discord's
-App Directory, which allows no age-restricted content. Its home page is the
+filtered for what Discord's App Discovery Content Requirements Policy calls
+adult content, so the app can be listed in Discord's App Directory: violence
+beyond slapstick and any sexual content (the Safe for Everyone filters),
+strong profanity, drugs, alcohol, tobacco, guns and gambling, and hate and
+harassment. Its home page is the
 website's without the room list: players type a nickname and press Join. The
 website keeps its four public rooms. The server enforces the split: a call
 can open only its own game, and the website only its four rooms

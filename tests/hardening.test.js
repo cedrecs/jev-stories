@@ -186,15 +186,20 @@ test('the old workers.dev address forwards page visits only', () => {
   assert.equal(forwardToCanonical(req('/'), new URL(old), undefined), null);
 });
 
-test('the Discord version: one game per call, with the teen filters, and none of the website rooms', () => {
+test('the Discord version: one game per call, with filters for Discord discovery, and none of the website rooms', () => {
   const call = 'i-1234567890-gc-1-2';
   assert.deepEqual(RATING_CODES, ['E', 'T', 'M', 'A'], 'the website lists its four rooms, never the call game');
   assert.equal(DISCORD_CODE, 'D');
-  assert.deepEqual(
-    RATINGS.D.filters.map((f) => f.key),
-    ['violence', 'sexual', 'profanity', 'hateful'],
-    'the Moderated for Teens filters, hate and harassment included',
-  );
+  const filterOf = (code, key) => RATINGS[code].filters.find((f) => f.key === key);
+  assert.deepEqual(RATINGS.D.filters.map((f) => f.key), ['violence', 'sexual', 'profanity', 'regulated', 'hateful']);
+  assert.equal(filterOf('D', 'violence'), filterOf('E', 'violence'), 'violence beyond slapstick, as in Safe for Everyone');
+  assert.equal(filterOf('D', 'sexual'), filterOf('E', 'sexual'), 'any sexual reference, as in Safe for Everyone');
+  assert.equal(filterOf('D', 'profanity'), filterOf('T', 'profanity'), 'strong profanity, as in Moderated for Teens');
+  assert.match(filterOf('D', 'regulated').question, /drugs, alcohol, tobacco, guns or gambling/);
+  assert.equal(filterOf('D', 'hateful').label, 'hate and harassment');
+  assert.deepEqual(RATINGS.T.filters.map((f) => f.key), ['violence', 'sexual', 'profanity', 'hateful'], 'the website rooms keep their filters');
+  const check = buildTextCheckRequest({ text: 'Beer Goblin', filters: RATINGS.D.filters });
+  assert.deepEqual(Object.keys(check.questions), ['mod_violence', 'mod_sexual', 'mod_profanity', 'mod_regulated', 'mod_hateful'], 'nicknames and themes face every filter');
   for (const code of RATING_CODES) {
     assert.equal(roomAllowed(code), true);
     assert.equal(roomAllowed(code, call), false, `a call cannot open ${RATINGS[code].label}`);
