@@ -46,6 +46,18 @@ export function allowedOrigins(url, discordClientId) {
   return out;
 }
 
+// The game's old workers.dev address forwards people to its own domain. Only
+// a browser's top-level page load moves: files, the room list and the room
+// connections keep answering there, so pages already open finish their games,
+// and a Discord launch (frame_id and instance_id in the address) is never
+// forwarded, whatever Discord's URL mapping still points at.
+export function forwardToCanonical(request, url, canonicalHost) {
+  if (!canonicalHost || url.hostname === canonicalHost || !url.hostname.endsWith('.workers.dev')) return null;
+  if (request.method !== 'GET' || request.headers.get('Sec-Fetch-Dest') !== 'document') return null;
+  if (url.searchParams.has('frame_id') || url.searchParams.has('instance_id')) return null;
+  return Response.redirect(`https://${canonicalHost}${url.pathname}${url.search}`, 301);
+}
+
 // A copy of the response with the headers added. Asset responses arrive with
 // read-only headers, so a new Response is built around the same body.
 export function withHeaders(response, headers) {

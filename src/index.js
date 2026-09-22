@@ -11,7 +11,7 @@
 
 import { Room } from './room.js';
 import { RATINGS, RATING_CODES, isInstanceId, roomObjectName } from './rules.js';
-import { securityHeaders, allowedOrigins, withHeaders } from './headers.js';
+import { securityHeaders, allowedOrigins, withHeaders, forwardToCanonical } from './headers.js';
 import { withPreview } from './preview.js';
 
 export { Room };
@@ -126,7 +126,7 @@ export default {
     const url = new URL(request.url);
     let response;
     try {
-      response = await route(request, env, url);
+      response = forwardToCanonical(request, url, env.CANONICAL_HOST) || (await route(request, env, url));
     } catch (err) {
       console.error('request failed', err);
       response = json({ error: 'Something went wrong' }, 500);

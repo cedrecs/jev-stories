@@ -166,6 +166,11 @@ A staging copy lives in the `[env.staging]` section of the same file and
 deploys with `npx wrangler deploy --env staging`, to its own workers.dev
 address and never to the custom domain.
 
+The game's first address, `jev-stories.jev-stories.workers.dev`, forwards
+page visits to the domain (`CANONICAL_HOST`). Its files, room list and room
+connections still answer, so pages already open finish their games, and a
+Discord launch is never forwarded.
+
 On the very first deploy the `workers.dev` subdomain is new and its TLS
 certificate takes a few minutes to issue. Until then browsers show a
 connection error. Nothing is wrong, wait and retry.

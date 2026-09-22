@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanText, normalizeLength, RateLimiter, ipKey, LENGTHS, RATINGS, DIMENSIONS, normalizeWeights, isInstanceId, roomObjectName } from '../src/rules.js';
 import { scoreResults, UNCHECKED, buildTextCheckRequest, checkText } from '../src/judge.js';
-import { securityHeaders, allowedOrigins, withHeaders } from '../src/headers.js';
+import { securityHeaders, allowedOrigins, withHeaders, forwardToCanonical } from '../src/headers.js';
 import { linkPreview } from '../src/preview.js';
 
 test('cleanText strips invisible and bidirectional characters and counts code points', () => {
@@ -151,4 +151,22 @@ test('link previews: the game card at the root, a card per room, absolute URLs',
   assert.equal(old.title, 'Join Moderated for Teens', 'old slugs get the room card');
   assert.equal(old.url, 'https://example.test/moderated-for-teens', 'and point at the current link');
   assert.equal(linkPreview(new URL('https://example.test/nope')).title, null);
+});
+
+test('the old workers.dev address forwards page visits only', () => {
+  const old = 'https://jev-stories.jev-stories.workers.dev';
+  const req = (path, dest = 'document', method = 'GET', base = old) => new Request(base + path, { method, headers: dest ? { 'Sec-Fetch-Dest': dest } : {} });
+  const fwd = (r, host = 'jev-yarn.jevie.app') => forwardToCanonical(r, new URL(r.url), host);
+  const moved = fwd(req('/safe-for-everyone?x=1'));
+  assert.equal(moved.status, 301);
+  assert.equal(moved.headers.get('Location'), 'https://jev-yarn.jevie.app/safe-for-everyone?x=1', 'the path and query come along');
+  assert.equal(fwd(req('/app.js', 'script')), null, 'files keep answering, so open pages finish their games');
+  assert.equal(fwd(req('/api/rooms', 'empty')), null, 'the room list keeps answering');
+  assert.equal(fwd(req('/', null)), null, 'no Sec-Fetch-Dest (link previews, older browsers): served as before');
+  assert.equal(fwd(req('/?frame_id=f&instance_id=i&platform=mobile')), null, 'a Discord launch is never forwarded');
+  assert.equal(fwd(req('/', 'iframe')), null);
+  assert.equal(fwd(req('/', 'document', 'POST')), null);
+  assert.equal(fwd(req('/', 'document', 'GET', 'https://jev-yarn.jevie.app')), null, 'the new address itself');
+  assert.equal(fwd(req('/'), ''), null, 'staging sets no address, so nothing moves');
+  assert.equal(forwardToCanonical(req('/'), new URL(old), undefined), null);
 });
