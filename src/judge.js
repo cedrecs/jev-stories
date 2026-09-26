@@ -206,6 +206,7 @@ export async function callTypeSafe(apiKey, body, { fetchImpl = fetch, retries = 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    let retryable = true;
     try {
       const res = await fetchImpl(TYPESAFE_URL, {
         method: 'POST',
@@ -215,15 +216,17 @@ export async function callTypeSafe(apiKey, body, { fetchImpl = fetch, retries = 
       });
       if (res.ok) return await res.json();
       const text = await res.text().catch(() => '');
-      const retryable = res.status === 429 || res.status >= 500;
       lastErr = new Error(`TypeSafe ${res.status}: ${text.slice(0, 200)}`);
-      if (!retryable) throw lastErr;
+      retryable = res.status === 429 || res.status >= 500;
     } catch (err) {
       lastErr = err;
       if (err && err.name === 'AbortError') lastErr = new Error('TypeSafe request timed out');
     } finally {
       clearTimeout(timer);
     }
+    // Thrown outside the try so its catch cannot swallow it: a 401 (bad key)
+    // or 422 (malformed request) would fail the same way on every retry.
+    if (!retryable) throw lastErr;
     if (attempt < retries) await sleep(500 * 2 ** attempt);
   }
   throw lastErr;

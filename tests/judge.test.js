@@ -8,6 +8,7 @@ import {
   mockAnswers,
   buildStoryScoreRequest,
   summarizeStoryScore,
+  callTypeSafe,
 } from '../src/judge.js';
 import { EMOJIS, pickEmoji } from '../src/rules.js';
 import {
@@ -337,4 +338,20 @@ test('the mock judge answers story score questions', () => {
   const res = mockAnswers(req);
   const s = summarizeStoryScore(res.answers, {});
   assert.ok(s && s.overall >= 0 && s.overall <= 100);
+});
+
+test('TypeSafe calls retry a 503 but give up at once on a 401, which no retry can fix', async () => {
+  let calls = 0;
+  const badKey = async () => {
+    calls++;
+    return new Response('invalid API key', { status: 401 });
+  };
+  await assert.rejects(callTypeSafe('bad-key', {}, { fetchImpl: badKey }), /TypeSafe 401/);
+  assert.equal(calls, 1, 'a 401 is sent once');
+
+  const replies = [new Response('overloaded', { status: 503 }), new Response(JSON.stringify({ answers: {} }))];
+  calls = 0;
+  const busyOnce = async () => replies[calls++];
+  assert.deepEqual(await callTypeSafe('key', {}, { fetchImpl: busyOnce }), { answers: {} });
+  assert.equal(calls, 2, 'a 503 is retried, and the answer after it comes back');
 });
